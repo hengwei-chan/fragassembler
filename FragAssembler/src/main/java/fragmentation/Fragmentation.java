@@ -36,29 +36,7 @@ import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.tools.HOSECodeGenerator;
 
-/*
- * The MIT License
- *
- * Copyright 2018 Michael Wenk [https://github.com/michaelwenk].
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- */
+
 public class Fragmentation {
     
     /**
@@ -71,17 +49,17 @@ public class Fragmentation {
      * all directions
      * @param atomType Atom type (element) used subspectrum creation. It has 
      * to be the same type as in used spectrum property.
-     * @param spectrumPropertyInNMRShiftDB Spectrum property name/ID belonging 
+     * @param NMRShiftDBSpectrumProp Spectrum property name/ID belonging 
      * to given atom container.
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
-    public static ArrayList<SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String spectrumPropertyInNMRShiftDB) throws CDKException{
+    public static ArrayList<SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrumProp) throws CDKException{
         
         final ArrayList<SSC> SSCs = new ArrayList<>();
         for (int i = 0; i < ac.getAtomCount(); i++) {
-            SSCs.add(Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, spectrumPropertyInNMRShiftDB));
+            SSCs.add(Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrumProp));
         }
         
         return SSCs;
@@ -98,16 +76,16 @@ public class Fragmentation {
      * all directions
      * @param atomType Atom type (element) used subspectrum creation. It has 
      * to be the same type as in used spectrum property.
-     * @param spectrumPropertyInNMRShiftDB Spectrum property name/ID belonging 
+     * @param NMRShiftDBSpectrumProp Spectrum property name/ID belonging 
      * to given atom container.
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#BFS(org.openscience.cdk.interfaces.IAtomContainer, int, int, int, org.openscience.cdk.interfaces.IAtomContainer, int) 
      */
-    public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType, final String spectrumPropertyInNMRShiftDB) throws CDKException{
+    public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrumProp) throws CDKException{
         
         // spectrum property string has to be changed for general cases
-        if(!Utils.setNMRShiftDBShiftsToAtomContainer(ac, spectrumPropertyInNMRShiftDB)){
+        if(!Utils.setNMRShiftDBShiftsToAtomContainer(ac, NMRShiftDBSpectrumProp)){
             return null;
         }        
         final IAtomContainer substructure = Fragmentation.buildSubstructure(ac, rootAtomIndex, maxNoOfSpheres);
