@@ -84,7 +84,6 @@ public class Fragmentation {
      */
     public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrumProp) throws CDKException{
         
-        // spectrum property string has to be changed for general cases
         if(!Utils.setNMRShiftDBShiftsToAtomContainer(ac, NMRShiftDBSpectrumProp)){
             return null;
         }        
