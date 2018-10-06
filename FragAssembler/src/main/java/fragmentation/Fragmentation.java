@@ -23,24 +23,77 @@
  */
 package fragmentation;
 
+import casekit.NMR.DB;
 import model.SSC;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IAtomContainerSet;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
-import org.openscience.cdk.tools.HOSECodeGenerator;
 
 
 public class Fragmentation {
     
+    
     /**
-     * Builds a set of substructure-subspectrum-correlations (SSC objects) from a 
+     * Builds a set of substructure-subspectrum-correlations (SSC objects) from  
+     * an atom container set for all its molecules and atoms by using a 
+     * breadth first search with spherical limit. This could be done in 
+     * parallel mode.
+     *
+     * @param acSet  IAtomContainerSet containing the structures
+     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * all directions
+     * @param atomType Atom type (element) used subspectrum creation. It has 
+     * to be the same type as in used spectrum property.
+     * @param NMRShiftDBSpectrum Spectrum property name/ID belonging 
+     * to given atom container.
+     * @param nThreads Number of threads to use for parallelization
+     * @return
+     * @throws org.openscience.cdk.exception.CDKException
+     * @throws java.lang.InterruptedException
+     * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
+     */
+    public static ArrayList<SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum, final int nThreads) throws CDKException, InterruptedException {
+        
+        final ExecutorService executor = Utils.initExecuter(nThreads);
+        
+        final ArrayList<SSC> SSCs = new ArrayList<>();
+        final List<Callable<ArrayList<SSC>>> callables = new ArrayList<>();
+        for (int i = 0; i < acSet.getAtomContainerCount(); i++) {
+            final IAtomContainer ac = acSet.getAtomContainer(i);
+            callables.add((Callable<ArrayList<SSC>>) () -> Fragmentation.buildSSCs(ac, maxNoOfSpheres, atomType, NMRShiftDBSpectrum));
+        }
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((sscs) -> {
+                    SSCs.addAll(sscs);
+                });
+
+        //shut down the executor service
+        Utils.stopExecuter(executor);                        
+        
+        return SSCs;
+    }
+    
+    /**
+     * Builds a set of substructure-subspectrum-correlations (SSC objects) from one 
      * structure for all its atoms by using a breadth first search 
      * with spherical limit. 
      *
@@ -49,17 +102,18 @@ public class Fragmentation {
      * all directions
      * @param atomType Atom type (element) used subspectrum creation. It has 
      * to be the same type as in used spectrum property.
-     * @param NMRShiftDBSpectrumProp Spectrum property name/ID belonging 
+     * @param NMRShiftDBSpectrum Spectrum property name/ID belonging 
      * to given atom container.
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
-    public static ArrayList<SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrumProp) throws CDKException{
+    public static ArrayList<SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum) throws CDKException{
         
+        Utils.setExplicitToImplicitHydrogens(ac);
         final ArrayList<SSC> SSCs = new ArrayList<>();
         for (int i = 0; i < ac.getAtomCount(); i++) {
-            SSCs.add(Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrumProp));
+            SSCs.add(Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrum));
         }
         
         return SSCs;
@@ -76,39 +130,22 @@ public class Fragmentation {
      * all directions
      * @param atomType Atom type (element) used subspectrum creation. It has 
      * to be the same type as in used spectrum property.
-     * @param NMRShiftDBSpectrumProp Spectrum property name/ID belonging 
+     * @param NMRShiftDBSpectrum Spectrum property name/ID belonging 
      * to given atom container.
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#BFS(org.openscience.cdk.interfaces.IAtomContainer, int, int, int, org.openscience.cdk.interfaces.IAtomContainer, int) 
      */
-    public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrumProp) throws CDKException{
+    public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum) throws CDKException{
         
-        if(!Utils.setNMRShiftDBShiftsToAtomContainer(ac, NMRShiftDBSpectrumProp)){
+        if(!DB.setNMRShiftDBShiftsToAtomContainer(ac, NMRShiftDBSpectrum)){
             return null;
         }        
         final IAtomContainer substructure = Fragmentation.buildSubstructure(ac, rootAtomIndex, maxNoOfSpheres);
-        
         final Spectrum subspectrum = Fragmentation.createSubspectrum(substructure, atomType);
         final Assignment assignment = Fragmentation.createAssignments(subspectrum, substructure, atomType);
-        
-        final HOSECodeGenerator hcg = new HOSECodeGenerator();
-        final HashMap<String, ArrayList<Double>> hoseShifts = new HashMap<>();
-        final HashMap<String, ArrayList<Integer>> hoseIndices = new HashMap<>();
-        String hose;
-        for (int i = 0; i < substructure.getAtomCount(); i++) {
-            hose = hcg.getHOSECode(substructure, substructure.getAtom(i), maxNoOfSpheres);
-            if (!hoseShifts.containsKey(hose)){
-                hoseShifts.put(hose, new ArrayList<>());
-                hoseIndices.put(hose, new ArrayList<>());
-            }
-            if (substructure.getAtom(i).getSymbol().equals(atomType) && (substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType)) != null)) {
-                hoseShifts.get(hose).add(substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType)));
-                hoseIndices.get(hose).add(i);
-            }
-        }
-        
-        return new SSC(subspectrum, assignment, substructure, hoseShifts, hoseIndices);
+                
+        return new SSC(subspectrum, assignment, substructure, maxNoOfSpheres);
     }
     
     /**
@@ -143,23 +180,21 @@ public class Fragmentation {
      * @param depth In which depth this search is
      * @return
      */
-    public static IAtomContainer BFS(final IAtomContainer ac, final int currentAtomIndex, final int predecessorAtomIndex, final int maxNoOfSpheres, IAtomContainer fragmentToBuild, final int depth) {
+    private static IAtomContainer BFS(final IAtomContainer ac, final int currentAtomIndex, final int predecessorAtomIndex, final int maxNoOfSpheres, IAtomContainer fragmentToBuild, final int depth) {
 
         if ((currentAtomIndex < 0 || currentAtomIndex >= ac.getAtomCount()) 
                 || (depth >= maxNoOfSpheres)
                 || ac.getAtom(currentAtomIndex).getSymbol().equals("H")) {
             return fragmentToBuild;
         }
-        
         if (fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)) == -1){            
             fragmentToBuild.addAtom(ac.getAtom(currentAtomIndex));
         }        
         if ((predecessorAtomIndex != -1) && (fragmentToBuild.getBond(fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(predecessorAtomIndex))), fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)))) == null)){
             fragmentToBuild.addBond(fragmentToBuild.indexOf(ac.getAtom(predecessorAtomIndex)), fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)), ac.getBond(ac.getAtom(predecessorAtomIndex), ac.getAtom(currentAtomIndex)).getOrder());
         }
-        
         for (final IAtom connectedAtom : ac.getConnectedAtomsList(ac.getAtom(currentAtomIndex))) {
-            fragmentToBuild = BFS(ac, ac.indexOf(connectedAtom), currentAtomIndex, maxNoOfSpheres, fragmentToBuild, depth + 1);
+            fragmentToBuild = Fragmentation.BFS(ac, ac.indexOf(connectedAtom), currentAtomIndex, maxNoOfSpheres, fragmentToBuild, depth + 1);
         }
         
         return fragmentToBuild;
@@ -173,7 +208,7 @@ public class Fragmentation {
      * @param atomType Atom type for which elements in atom container should be considered
      * @return
      */
-    public static Spectrum createSubspectrum(final IAtomContainer substructure, final String atomType){
+    private static Spectrum createSubspectrum(final IAtomContainer substructure, final String atomType){
         final Spectrum subspectrum = new Spectrum(new String[]{Utils.getIsotopeIdentifier(atomType)});  
         for (int i = 0; i < substructure.getAtomCount(); i++) {
             if(substructure.getAtom(i).getSymbol().equals(atomType) && (substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType)) != null)){                
@@ -192,7 +227,7 @@ public class Fragmentation {
      * @param atomType Atom type for which elements in atom container should be considered
      * @return
      */
-    public static Assignment createAssignments(final Spectrum subspectrum, final IAtomContainer substructure, final String atomType){
+    private static Assignment createAssignments(final Spectrum subspectrum, final IAtomContainer substructure, final String atomType){
         int counter = 0;
         final Assignment assignment = new Assignment(subspectrum);
         for (int i = 0; i < substructure.getAtomCount(); i++) {
