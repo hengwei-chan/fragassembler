@@ -84,12 +84,10 @@ public class SSC {
     }
     
     private void initUnsaturatedAtomIndices() throws CDKException{
-        IAtom atom;
         final IChemObjectBuilder builder = SilentChemObjectBuilder.getInstance();
         for (int i = 0; i < this.substructure.getAtomCount(); i++) {
-            atom = this.substructure.getAtom(i);
             // set the indices of unsaturated atoms in substructure
-            if (!CDKValencyChecker.getInstance(builder).isSaturated(atom, this.substructure)) {
+            if (!CDKValencyChecker.getInstance(builder).isSaturated(this.substructure.getAtom(i), this.substructure)) {
                 this.unsaturatedAtomIndices.add(i);
             }            
         }
