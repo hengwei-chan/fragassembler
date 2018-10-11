@@ -30,10 +30,12 @@ import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
@@ -59,20 +61,23 @@ public class Fragmentation {
      * to given atom container.
      * @param nThreads Number of threads to use for parallelization
      * @return
-     * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.InterruptedException
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
-    public static ArrayList<SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum, final int nThreads) throws CDKException, InterruptedException {
-        
+    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum, final int nThreads) throws InterruptedException {
+        // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
-        
-        final ArrayList<SSC> SSCs = new ArrayList<>();
-        final List<Callable<ArrayList<SSC>>> callables = new ArrayList<>();
+        final HashMap<Integer, SSC> SSCs = new HashMap<>();
+        final ArrayList<Callable<HashMap<Integer, SSC>>> callables = new ArrayList<>();
+        // add all task to do
+        int offsetSSCIndex = 0;
         for (int i = 0; i < acSet.getAtomContainerCount(); i++) {
             final IAtomContainer ac = acSet.getAtomContainer(i);
-            callables.add((Callable<ArrayList<SSC>>) () -> Fragmentation.buildSSCs(ac, maxNoOfSpheres, atomType, NMRShiftDBSpectrum));
+            final int offsetSSCIndexFinalCopy = offsetSSCIndex;           
+            callables.add((Callable<HashMap<Integer, SSC>>) () -> Fragmentation.buildSSCs(ac, maxNoOfSpheres, atomType, NMRShiftDBSpectrum, offsetSSCIndexFinalCopy));
+            offsetSSCIndex += ac.getAtomCount();
         }
+        // execute all task in parallel
         executor.invokeAll(callables)
                 .stream()
                 .map(future -> {
@@ -83,10 +88,9 @@ public class Fragmentation {
                     }
                 })
                 .forEach((sscs) -> {
-                    SSCs.addAll(sscs);
+                    SSCs.putAll(sscs);
                 });
-
-        //shut down the executor service
+        // shut down the executor service
         Utils.stopExecuter(executor);                        
         
         return SSCs;
@@ -104,18 +108,24 @@ public class Fragmentation {
      * to be the same type as in used spectrum property.
      * @param NMRShiftDBSpectrum Spectrum property name/ID belonging 
      * to given atom container.
+     * @param offsetSSCIndex  offset value for indexing each new build SSC
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
-    public static ArrayList<SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum) throws CDKException{
+    private static HashMap<Integer, SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum, final int offsetSSCIndex) throws CDKException{
         
         Utils.setExplicitToImplicitHydrogens(ac);
-        final ArrayList<SSC> SSCs = new ArrayList<>();
-        for (int i = 0; i < ac.getAtomCount(); i++) {
-            SSCs.add(Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrum));
+        final HashMap<Integer, SSC> SSCs = new HashMap<>();
+        SSC ssc;
+        for (int i = 0; i < ac.getAtomCount(); i++) {               
+            ssc = Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrum);
+            if(ssc != null){
+                SSCs.put(offsetSSCIndex + i, Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrum));
+                SSCs.get(offsetSSCIndex + i).setIndex(offsetSSCIndex + i);
+            }
         }
-        
+       
         return SSCs;
     }
     
@@ -144,7 +154,7 @@ public class Fragmentation {
         final IAtomContainer substructure = Fragmentation.buildSubstructure(ac, rootAtomIndex, maxNoOfSpheres);
         final Spectrum subspectrum = Fragmentation.createSubspectrum(substructure, atomType);
         final Assignment assignment = Fragmentation.createAssignments(subspectrum, substructure, atomType);
-                
+        
         return new SSC(subspectrum, assignment, substructure, maxNoOfSpheres);
     }
     
