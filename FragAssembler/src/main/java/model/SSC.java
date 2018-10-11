@@ -25,6 +25,7 @@ package model;
 
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
+import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,7 +62,7 @@ public class SSC {
     // atom type of subspectrum for which atoms should have an assigned shift value
     private final String atomType;
     // min/max shift range to consider 
-    private int minShift, maxShift;
+    private int minShift, maxShift, index;
     // indices of open-sphere (unsaturated) atoms of substructure
     private final ArrayList<Integer> unsaturatedAtomIndices;
 
@@ -77,6 +78,7 @@ public class SSC {
         this.initHOSECodes();
         this.minShift = 0;
         this.maxShift = 220;
+        this.index = -1;
         this.unsaturatedAtomIndices = new ArrayList<>();
         this.initUnsaturatedAtomIndices();
         this.presenceMultiplicities = new HashMap<>();
@@ -108,23 +110,35 @@ public class SSC {
                 this.presenceMultiplicities.get(mult).put(i, new ArrayList<>());
             }
         }
+        if(this.getAtomTypeIndices().get(this.atomType) == null){
+            return;
+        }
         // pre-search and settings
         IAtom atom;
         int shift;
         for (final int i : this.getAtomTypeIndices().get(this.atomType)) {
-            atom = this.substructure.getAtom(i);                                
-            shift = ((Double) atom.getProperty(Utils.getNMRShiftConstant(this.atomType))).intValue();
-            if((atom.getProperty(Utils.getNMRShiftConstant(this.atomType)) != null) 
-                    && Utils.checkMinMaxValue(this.minShift, this.maxShift, shift)
+            atom = this.substructure.getAtom(i);                                            
+            if((atom.getProperty(Utils.getNMRShiftConstant(this.atomType)) != null)                     
                     && (atom.getImplicitHydrogenCount() != null)
                     && (Utils.getMultiplicityFromHydrogenCount(atom.getImplicitHydrogenCount()) != null)){                     
-                this.presenceMultiplicities.get(Utils.getMultiplicityFromHydrogenCount(atom.getImplicitHydrogenCount())).get(shift).add(i);
+                shift = ((Double) atom.getProperty(Utils.getNMRShiftConstant(this.atomType))).intValue();
+                if(Utils.checkMinMaxValue(this.minShift, this.maxShift, shift)){
+                    this.presenceMultiplicities.get(Utils.getMultiplicityFromHydrogenCount(atom.getImplicitHydrogenCount())).get(shift).add(i);
+                }                
             }
         }        
     }    
     
-    // stores the shifts and atom indices for each HOSE code
+
+    /**
+     * Stores the shifts and atom indices for each HOSE code.
+     *
+     * @throws CDKException
+     */
     private void initHOSECodes() throws CDKException{
+        if(this.getAtomTypeIndices().get(this.atomType) == null){
+            return;
+        }
         final HOSECodeGenerator hcg = new HOSECodeGenerator();
         String hose;
         for (final int i : this.getAtomTypeIndices().get(this.atomType)) {
@@ -166,6 +180,14 @@ public class SSC {
         return this.maxShift;
     }
     
+    public void setIndex(final int index){
+        this.index = index;
+    }
+    
+    public int getIndex(){
+        return this.index;
+    }
+    
     public Spectrum getSubspectrum(){
         return this.subspectrum;
     }
@@ -198,23 +220,140 @@ public class SSC {
         return this.presenceMultiplicities;
     }
     
+    /**
+     * Returns the indices of open-sphere atoms in substructure.
+     *
+     * @return
+     */
     public ArrayList<Integer> getUnsaturatedAtomIndices(){
         return this.unsaturatedAtomIndices;
     }
     
-    public ArrayList<Integer> findMatches(final String multiplicity, final double shift, final int tol){
-                        
-        if(this.presenceMultiplicities.get(multiplicity) == null){
+    /**
+     * Returns the full list of matched shifts as atom indices between a SSC 
+     * and a query spectrum.
+     * Intensities are still not considered here.
+     *
+     * @param multiplicity
+     * @param shift
+     * @param tol
+     * @return
+     */
+    public ArrayList<Integer> findMatches(final String multiplicity, final double shift, final double tol) {
+
+        if (this.presenceMultiplicities.get(multiplicity) == null) {
             return new ArrayList<>();
         }
-        final int ShiftInteger = ((Double) shift).intValue();
-        final HashSet<Integer> hs = new HashSet<>();         
-        for (int i = ShiftInteger - tol ; i <= ShiftInteger + tol; i++) {
-            if(Utils.checkMinMaxValue(this.minShift, this.maxShift, i)){
+        final HashSet<Integer> hs = new HashSet<>();
+        for (int i = (int) (shift - tol); i <= (int) (shift + tol); i++) {
+            if (Utils.checkMinMaxValue(this.minShift, this.maxShift, i)) {
                 hs.addAll(this.presenceMultiplicities.get(multiplicity).get(i));
-            }            
+            }
+        }
+
+        return new ArrayList<>(hs);
+    }
+
+    /**
+     * Returns the closest shift matches between a SSC and a
+     * query spectrum as an Assignment object.
+     * Intensities are still not considered here.
+     *
+     * @param querySpectrum Query spectrum
+     * @param tol Tolerance value [ppm] while shift matching
+     * @return
+     */
+    public Assignment findMatches(final Spectrum querySpectrum, final double tol) {
+        final Assignment matchAssignment = new Assignment(querySpectrum);
+        if (!Utils.getElementIdentifier(querySpectrum.getNuclei()[0]).equals(this.atomType)) {
+            System.err.println("Wrong nucleus in query spectrum!!!");
+            return matchAssignment;
+        }
+        Signal signal;
+        for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
+            signal = querySpectrum.getSignal(i);
+            matchAssignment.setAssignment(0, i, this.getClosestMatch(this.findMatches(signal.getMultiplicity(), signal.getShift(0), tol), signal.getShift(0), tol));
+        }
+
+        return matchAssignment;
+    }
+
+    private int getClosestMatch(final ArrayList<Integer> matchAtomIndices, final double queryShift, final double tol) {
+        int closestMatchIndex = -1;
+        double diff = tol, shiftMatchIndex;
+        for (final int matchIndex : matchAtomIndices) {
+            shiftMatchIndex = this.substructure.getAtom(matchIndex).getProperty(Utils.getNMRShiftConstant(this.atomType));
+            if (Math.abs(shiftMatchIndex - queryShift) < diff) {
+                diff = Math.abs(shiftMatchIndex - queryShift);
+                closestMatchIndex = matchIndex;
+            }
+        }
+
+        return closestMatchIndex;
+    }
+
+    /**
+     * Returns deviatons between matched shifts in SSC and query query spectrum.
+     * The matching procedure is already included here.
+     *
+     * @param querySpectrum
+     * @param tol
+     * @return
+     *
+     */
+    public Double[] getDeviations(final Spectrum querySpectrum, final double tol) {
+        final Double[] deviations = new Double[querySpectrum.getSignalCount()];
+        final Assignment matches = this.findMatches(querySpectrum, tol);
+
+        double shiftMatchIndex;
+        for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
+            if (matches.getAssignment(0, i) == -1) {
+                deviations[i] = null;
+            } else {
+                shiftMatchIndex = this.substructure.getAtom(matches.getAssignment(0, i)).getProperty(Utils.getNMRShiftConstant(this.atomType));
+                deviations[i] = Math.abs(shiftMatchIndex - querySpectrum.getShift(i, 0));
+            }
+        }
+
+        return deviations;
+    }
+
+    /**
+     * Returns the average of all deviations of matched shifts between a SSC 
+     * and a query spectrum. 
+     * The calculation of deviations is already included here.
+     *
+     * @param querySpectrum Query spectrum
+     * @param tol Tolerance value [ppm] while shift matching
+     * @param minOverlap Minimum overlap threshold
+     * @return
+     * 
+     * @see model.SSC#getDeviations(casekit.NMR.model.Spectrum, double) 
+     */
+    public Double getMatchFactor(final Spectrum querySpectrum, final double tol, final int minOverlap) {
+        return this.getMatchFactor(this.getDeviations(querySpectrum, tol), minOverlap);
+    }
+    
+    /**
+     * Returns the average of all deviations of matched shifts between a SSC 
+     * and a query spectrum. 
+     * If the minimum overlap threshold is not reached, a null value will be 
+     * returned.
+     *
+     * @param deviations Deviations between a SSC subspectrum and query spectrum.
+     * @param minOverlap Minimum overlap threshold
+     * @return
+     * 
+     * @see model.SSC#getDeviations(casekit.NMR.model.Spectrum, double) 
+     */
+    public Double getMatchFactor(final Double[] deviations, final int minOverlap) {
+        int hitCounter = 0;
+        for (final Double deviation : deviations) {
+            if(deviation != null){
+                hitCounter++;
+            }
         }
         
-        return new ArrayList<>(hs);
+        return (hitCounter >= minOverlap) ? Utils.getMean(deviations) : null;
     }
 }
