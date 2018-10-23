@@ -1,0 +1,7 @@
+-   usage of fingerprints in substructure matching?
+
+-   consider intensities in (ArrayList<Integer>) SSC.findMatches() and getClosestMatch()
+-   SSC/SSC fusion for building bigger fragments
+-   how to do the overlap check and structural identification?
+-   usage of RMS values?
+-   add exceptions where needed
