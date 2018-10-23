@@ -73,21 +73,12 @@ public class SSCSearch {
      * @throws java.lang.InterruptedException
      */
     public void createHOSELookupTable() throws InterruptedException{  
-        // initialize an executor
-        final ExecutorService executor = Utils.initExecuter(this.nThreads); 
-        final ArrayList<Callable<Void>> callables = new ArrayList<>();
-        // add all task to do
+        this.HOSECodeLookupTable.clear();
         for (final SSC ssc : this.SSCLibrary.values()) {
             if(ssc != null){
-                callables.add((Callable<Void>) () -> {
-                    return Utils.combineHashMaps(HOSECodeLookupTable, ssc.getHOSELookupShifts());
-                });
+                Utils.combineHashMaps(this.HOSECodeLookupTable, ssc.getHOSELookupShifts());
             }            
         }
-        // execute all task in parallel
-        executor.invokeAll(callables);
-        // shut down the executor service
-        Utils.stopExecuter(executor);  
     }
     
     /**
@@ -223,7 +214,7 @@ public class SSCSearch {
     public void match(final Spectrum querySpectrum, final double tol) throws InterruptedException{
         this.matchFactors.clear();        
         
-        // initialize an executor
+        // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);  
         final ArrayList<Callable<HashMap<Integer, Double>>> callables = new ArrayList<>();
         // add all task to do
@@ -250,18 +241,32 @@ public class SSCSearch {
                     }                    
                 });
         // shut down the executor service
-        Utils.stopExecuter(executor);  
+        Utils.stopExecuter(executor, 3);  
  
         this.rankSSCIndices();
     }
     
+    /**
+     * Ranks SSC indices according their substructure size and match factor. 
+     *
+     */
     private void rankSSCIndices(){
         this.rankedSSCIndices.clear();
-        this.rankedSSCIndices.addAll(this.matchFactors.keySet());
+        this.rankedSSCIndices.addAll(this.matchFactors.keySet()); // use SSC indices of SSC library
         
         Collections.sort(this.rankedSSCIndices, new Comparator<Integer>() {
             @Override
-            public int compare(final Integer o1, final Integer o2) {                
+            public int compare(final Integer o1, final Integer o2) {    
+                if(SSCLibrary.get(o1).getAtomCount() >= SSCLibrary.get(o2).getAtomCount()){
+                    if(matchFactors.get(o1) <= matchFactors.get(o2)){
+                        return -1;
+                    }                    
+                } else {//if(SSCLibrary.get(o2).getAtomCount() > SSCLibrary.get(o1).getAtomCount()) {                
+                    if(matchFactors.get(o2) < matchFactors.get(o1)){
+                        return 1;
+                    }
+                }
+                
                 return Double.compare(matchFactors.get(o1), matchFactors.get(o2));
             }
         });
