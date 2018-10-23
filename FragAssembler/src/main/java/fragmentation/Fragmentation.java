@@ -23,7 +23,6 @@
  */
 package fragmentation;
 
-import casekit.NMR.DB;
 import model.SSC;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
@@ -34,8 +33,6 @@ import java.util.HashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
@@ -57,14 +54,13 @@ public class Fragmentation {
      * all directions
      * @param atomType Atom type (element) used subspectrum creation. It has 
      * to be the same type as in used spectrum property.
-     * @param NMRShiftDBSpectrum Spectrum property name/ID belonging 
-     * to given atom container.
+     * 
      * @param nThreads Number of threads to use for parallelization
      * @return
      * @throws java.lang.InterruptedException
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
-    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum, final int nThreads) throws InterruptedException {
+    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads) throws InterruptedException {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final HashMap<Integer, SSC> SSCs = new HashMap<>();
@@ -74,7 +70,7 @@ public class Fragmentation {
         for (int i = 0; i < acSet.getAtomContainerCount(); i++) {
             final IAtomContainer ac = acSet.getAtomContainer(i);
             final int offsetSSCIndexFinalCopy = offsetSSCIndex;           
-            callables.add((Callable<HashMap<Integer, SSC>>) () -> Fragmentation.buildSSCs(ac, maxNoOfSpheres, atomType, NMRShiftDBSpectrum, offsetSSCIndexFinalCopy));
+            callables.add((Callable<HashMap<Integer, SSC>>) () -> Fragmentation.buildSSCs(ac, maxNoOfSpheres, atomType, offsetSSCIndexFinalCopy));
             offsetSSCIndex += ac.getAtomCount();
         }
         // execute all task in parallel
@@ -91,7 +87,7 @@ public class Fragmentation {
                     SSCs.putAll(sscs);
                 });
         // shut down the executor service
-        Utils.stopExecuter(executor);                        
+        Utils.stopExecuter(executor, 3);                        
         
         return SSCs;
     }
@@ -113,15 +109,15 @@ public class Fragmentation {
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
-    private static HashMap<Integer, SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum, final int offsetSSCIndex) throws CDKException{
+    private static HashMap<Integer, SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final int offsetSSCIndex) throws CDKException{
         
         Utils.setExplicitToImplicitHydrogens(ac);
         final HashMap<Integer, SSC> SSCs = new HashMap<>();
         SSC ssc;
         for (int i = 0; i < ac.getAtomCount(); i++) {               
-            ssc = Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrum);
+            ssc = Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType);
             if(ssc != null){
-                SSCs.put(offsetSSCIndex + i, Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType, NMRShiftDBSpectrum));
+                SSCs.put(offsetSSCIndex + i, Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType));
                 SSCs.get(offsetSSCIndex + i).setIndex(offsetSSCIndex + i);
             }
         }
@@ -140,22 +136,17 @@ public class Fragmentation {
      * all directions
      * @param atomType Atom type (element) used subspectrum creation. It has 
      * to be the same type as in used spectrum property.
-     * @param NMRShiftDBSpectrum Spectrum property name/ID belonging 
-     * to given atom container.
+     * 
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#BFS(org.openscience.cdk.interfaces.IAtomContainer, int, int, int, org.openscience.cdk.interfaces.IAtomContainer, int) 
      */
-    public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType, final String NMRShiftDBSpectrum) throws CDKException{
-        
-        if(!DB.setNMRShiftDBShiftsToAtomContainer(ac, NMRShiftDBSpectrum)){
-            return null;
-        }        
+    public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType) throws CDKException{
         final IAtomContainer substructure = Fragmentation.buildSubstructure(ac, rootAtomIndex, maxNoOfSpheres);
         final Spectrum subspectrum = Fragmentation.createSubspectrum(substructure, atomType);
         final Assignment assignment = Fragmentation.createAssignments(subspectrum, substructure, atomType);
         
-        return new SSC(subspectrum, assignment, substructure, maxNoOfSpheres);
+        return new SSC(subspectrum, assignment, substructure, 0, maxNoOfSpheres);
     }
     
     /**
