@@ -49,28 +49,31 @@ public class SSC {
     private final Assignment assignment;
     private final IAtomContainer substructure;
     // spherical search limit
-    private final int maxNoOfSpheres;
+    private final int rootAtomIndex, maxSpheres;
     // stores all shifts for each single HOSE code
     private final HashMap<String, ArrayList<Double>> hoseLookupShifts;
     // stores all atom indices for each single HOSE code
     private final HashMap<String, ArrayList<Integer>> hoseLookupIndices;
     // stores all atom indices for each occurring atom type in substructure
     private final HashMap<String, ArrayList<Integer>> atomTypeIndices;
-    // for pre-search: map of multiplicities (no. of attached protons) consisting 
-    // of map of shift values and its atom indices
+    // for pre-search: map of multiplicities as keys consisting 
+    // of maps of shift values as keys and its atom indices
     private final HashMap<String, HashMap<Integer, ArrayList<Integer>>> presenceMultiplicities;
     // atom type of subspectrum for which atoms should have an assigned shift value
     private final String atomType;
-    // min/max shift range to consider 
-    private int minShift, maxShift, index;
+    // min/max shift range to consider
+    private int minShift, maxShift;
+    // index to use in SSC library
+    private int index;
     // indices of open-sphere (unsaturated) atoms of substructure
     private final ArrayList<Integer> unsaturatedAtomIndices;
 
-    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int maxNoOfSpheres) throws CDKException {
+    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSpheres) throws CDKException {
         this.subspectrum = subspectrum;
         this.assignment = assignment;
         this.substructure = substructure; 
-        this.maxNoOfSpheres = maxNoOfSpheres;
+        this.rootAtomIndex = rootAtomIndex;
+        this.maxSpheres = maxSpheres;
         this.atomTypeIndices = Utils.getAtomTypeIndices(this.substructure);
         this.atomType = Utils.getAtomTypeFromSpectrum(this.subspectrum, 0);
         this.hoseLookupShifts = new HashMap<>();
@@ -93,8 +96,7 @@ public class SSC {
                 this.unsaturatedAtomIndices.add(i);
             }            
         }
-    }
-    
+    }           
     
     /**
      * Specified for carbons only -> not generic.
@@ -106,7 +108,7 @@ public class SSC {
         // init
         for (final String mult : mults) {            
             this.presenceMultiplicities.put(mult, new HashMap<>());
-            for (int i = this.minShift; i < this.maxShift + 1; i++) {
+            for (int i = this.minShift; i <= this.maxShift; i++) {
                 this.presenceMultiplicities.get(mult).put(i, new ArrayList<>());
             }
         }
@@ -116,11 +118,11 @@ public class SSC {
         // pre-search and settings
         IAtom atom;
         int shift;
-        for (final int i : this.getAtomTypeIndices().get(this.atomType)) {
+        for (final int i : this.getAtomTypeIndices().get(this.atomType)) { // for all atoms of that atom type
             atom = this.substructure.getAtom(i);                                            
-            if((atom.getProperty(Utils.getNMRShiftConstant(this.atomType)) != null)                     
-                    && (atom.getImplicitHydrogenCount() != null)
-                    && (Utils.getMultiplicityFromHydrogenCount(atom.getImplicitHydrogenCount()) != null)){                     
+            if((atom.getProperty(Utils.getNMRShiftConstant(this.atomType)) != null) // that atom has a set shift value         
+                    && (atom.getImplicitHydrogenCount() != null)                    // hydrogen count must not be null
+                    && (Utils.getMultiplicityFromHydrogenCount(atom.getImplicitHydrogenCount()) != null)){  // multiplicity obtained by attached hydrogen count must not be null                     
                 shift = ((Double) atom.getProperty(Utils.getNMRShiftConstant(this.atomType))).intValue();
                 if(Utils.checkMinMaxValue(this.minShift, this.maxShift, shift)){
                     this.presenceMultiplicities.get(Utils.getMultiplicityFromHydrogenCount(atom.getImplicitHydrogenCount())).get(shift).add(i);
@@ -142,7 +144,7 @@ public class SSC {
         final HOSECodeGenerator hcg = new HOSECodeGenerator();
         String hose;
         for (final int i : this.getAtomTypeIndices().get(this.atomType)) {
-            hose = hcg.getHOSECode(this.substructure, this.substructure.getAtom(i), this.maxNoOfSpheres);
+            hose = hcg.getHOSECode(this.substructure, this.substructure.getAtom(i), this.maxSpheres);
             if (!this.hoseLookupShifts.containsKey(hose)) {
                 this.hoseLookupShifts.put(hose, new ArrayList<>());
                 this.hoseLookupIndices.put(hose, new ArrayList<>());
@@ -152,6 +154,24 @@ public class SSC {
                 this.hoseLookupIndices.get(hose).add(i);
             }
         }
+    }
+    
+    /**
+     * Returns the root atom index of this substructure.
+     *
+     * @return
+     */
+    public int getRootAtomIndex(){
+        return this.rootAtomIndex;
+    }
+    
+    /**
+     * Returns the maximum number of spheres for building HOSE codes.
+     *
+     * @return
+     */
+    public int getMaxSpheres(){
+        return this.maxSpheres;
     }
     
     /**
@@ -232,14 +252,15 @@ public class SSC {
     /**
      * Returns the full list of matched shifts as atom indices between a SSC 
      * and a query spectrum.
-     * Intensities are still not considered here.
+     * Despite intensities are given, they are still not considered here.
      *
-     * @param multiplicity
-     * @param shift
-     * @param tol
+     * @param multiplicity Multiplicity as multiplet string, e.g. "S" (Singlet)
+     * @param shift Shift value [ppm]
+     * @param intensity Intensity value
+     * @param tol Tolerance value [ppm] used during shift matching
      * @return
      */
-    public ArrayList<Integer> findMatches(final String multiplicity, final double shift, final double tol) {
+    public ArrayList<Integer> findMatches(final String multiplicity, final double shift, final double intensity, final double tol) {
 
         if (this.presenceMultiplicities.get(multiplicity) == null) {
             return new ArrayList<>();
@@ -257,22 +278,26 @@ public class SSC {
     /**
      * Returns the closest shift matches between a SSC and a
      * query spectrum as an Assignment object.
-     * Intensities are still not considered here.
+     * Despite intensities are given, they are still not considered here.
      *
      * @param querySpectrum Query spectrum
-     * @param tol Tolerance value [ppm] while shift matching
+     * @param tol Tolerance value [ppm] used during shift matching
      * @return
      */
     public Assignment findMatches(final Spectrum querySpectrum, final double tol) {
         final Assignment matchAssignment = new Assignment(querySpectrum);
+        // wrong nucleus in query spectrum
         if (!Utils.getElementIdentifier(querySpectrum.getNuclei()[0]).equals(this.atomType)) {
-            System.err.println("Wrong nucleus in query spectrum!!!");
+            return matchAssignment;
+        }
+        // too many atoms of that atom type in SSC
+        if (this.getAtomTypeIndices().get(this.atomType).size() > querySpectrum.getSignalCount()) {
             return matchAssignment;
         }
         Signal signal;
         for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
             signal = querySpectrum.getSignal(i);
-            matchAssignment.setAssignment(0, i, this.getClosestMatch(this.findMatches(signal.getMultiplicity(), signal.getShift(0), tol), signal.getShift(0), tol));
+            matchAssignment.setAssignment(0, i, this.getClosestMatch(this.findMatches(signal.getMultiplicity(), signal.getShift(0), signal.getIntensity(), tol), signal.getShift(0), tol));
         }
 
         return matchAssignment;
@@ -300,6 +325,7 @@ public class SSC {
      * @param tol
      * @return
      *
+     * @see #findMatches(casekit.NMR.model.Spectrum, double) 
      */
     public Double[] getDeviations(final Spectrum querySpectrum, final double tol) {
         final Double[] deviations = new Double[querySpectrum.getSignalCount()];
@@ -324,7 +350,7 @@ public class SSC {
      * The calculation of deviations is already included here.
      *
      * @param querySpectrum Query spectrum
-     * @param tol Tolerance value [ppm] while shift matching
+     * @param tol Tolerance value [ppm] used during shift matching
      * @param minOverlap Minimum overlap threshold
      * @return
      * 
