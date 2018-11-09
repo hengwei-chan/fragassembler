@@ -1,7 +1,11 @@
--   usage of fingerprints in substructure matching?
 
--   consider intensities in (ArrayList<Integer>) SSC.findMatches() and getClosestMatch()
--   SSC/SSC fusion for building bigger fragments
--   how to do the overlap check and structural identification?
--   usage of RMS values?
+-   consider intensities in (ArrayList<Integer>) SSC.findMatches() and SSC.getClosestMatch()
+-   usage of RMS values? ArrayList<> findMatches() -> presearch?
+-   check for multiple assignments/symmetry in SSC class
 -   add exceptions where needed
+-   deep cloning of SSC class (and used objects within that)
+-   unique parent assignments in SSC class: updateParentAtomIndicesInHOSECodeSpheres()
+-   where to use the open-sphere information
+    -   during SSC extension
+    -   as indicator after SSC entension?
+-   optimizing the steps for SSC extension?
