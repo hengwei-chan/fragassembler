@@ -38,10 +38,10 @@ import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IAtomContainerSet;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
+import org.openscience.cdk.tools.HOSECodeGenerator;
 
 
 public class Fragmentation {
-    
     
     /**
      * Builds a set of substructure-subspectrum-correlations (SSC objects) from  
@@ -58,15 +58,40 @@ public class Fragmentation {
      * @param nThreads Number of threads to use for parallelization
      * @return
      * @throws java.lang.InterruptedException
+     * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
-    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads) throws InterruptedException {
+    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads) throws InterruptedException, CDKException {                
+        
+        return Fragmentation.buildSSCs(acSet, maxNoOfSpheres, atomType, nThreads, 0);
+    }
+    
+    /**
+     * Builds a set of substructure-subspectrum-correlations (SSC objects) from  
+     * an atom container set for all its molecules and atoms by using a 
+     * breadth first search with spherical limit. This could be done in 
+     * parallel mode.
+     *
+     * @param acSet  IAtomContainerSet containing the structures
+     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * all directions
+     * @param atomType Atom type (element) used subspectrum creation. It has 
+     * to be the same type as in used spectrum property.
+     * 
+     * @param nThreads Number of threads to use for parallelization
+     * @param offset offset value as starting point for indexing the SSCs
+     * @return
+     * @throws java.lang.InterruptedException
+     * @throws org.openscience.cdk.exception.CDKException
+     * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
+     */
+    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads, final int offset) throws InterruptedException, CDKException {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final HashMap<Integer, SSC> SSCs = new HashMap<>();
         final ArrayList<Callable<HashMap<Integer, SSC>>> callables = new ArrayList<>();
-        // add all task to do
-        int offsetSSCIndex = 0;
+        // add all task to do        
+        int offsetSSCIndex = offset;
         for (int i = 0; i < acSet.getAtomContainerCount(); i++) {
             final IAtomContainer ac = acSet.getAtomContainer(i);
             final int offsetSSCIndexFinalCopy = offsetSSCIndex;           
@@ -84,7 +109,7 @@ public class Fragmentation {
                     }
                 })
                 .forEach((sscs) -> {
-                    SSCs.putAll(sscs);
+                    SSCs.putAll(sscs);                    
                 });
         // shut down the executor service
         Utils.stopExecuter(executor, 3);                        
@@ -110,14 +135,25 @@ public class Fragmentation {
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
     private static HashMap<Integer, SSC> buildSSCs(final IAtomContainer ac, final int maxNoOfSpheres, final String atomType, final int offsetSSCIndex) throws CDKException{
-        
+                             
         Utils.setExplicitToImplicitHydrogens(ac);
         final HashMap<Integer, SSC> SSCs = new HashMap<>();
         SSC ssc;
-        for (int i = 0; i < ac.getAtomCount(); i++) {               
+        final HOSECodeGenerator hcg = new HOSECodeGenerator();  
+        IAtomContainer substructure;
+        for (int i = 0; i < ac.getAtomCount(); i++) {      
             ssc = Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType);
             if(ssc != null){
-                SSCs.put(offsetSSCIndex + i, Fragmentation.buildSSC(ac, i, maxNoOfSpheres, atomType));
+                substructure = ssc.getSubstructure();
+                for (int k = 0; k < substructure.getAtomCount(); k++) {
+                    // sets the HOSE code to SSC
+                    ssc.setHOSECode(k, hcg.getHOSECode(ac, ac.getAtom(ac.indexOf(substructure.getAtom(k))), maxNoOfSpheres));
+                    // store atoms of each sphere in SSC
+                    for (int s = 0; s < maxNoOfSpheres; s++) {                         
+                        ssc.setAtomsInHOSECodeSpheres(k, hcg.getNodesInSphere(s+1), s+1);
+                    }
+                }                
+                SSCs.put(offsetSSCIndex + i, ssc);
                 SSCs.get(offsetSSCIndex + i).setIndex(offsetSSCIndex + i);
             }
         }
@@ -134,7 +170,7 @@ public class Fragmentation {
      * @param rootAtomIndex Index of start atom
      * @param maxNoOfSpheres Spherical limit for building a substructure into 
      * all directions
-     * @param atomType Atom type (element) used subspectrum creation. It has 
+     * @param atomType Atom type (element symbol) used for subspectrum creation. It has 
      * to be the same type as in used spectrum property.
      * 
      * @return
@@ -144,7 +180,7 @@ public class Fragmentation {
     public static SSC buildSSC(final IAtomContainer ac, final int rootAtomIndex, final int maxNoOfSpheres, final String atomType) throws CDKException{
         final IAtomContainer substructure = Fragmentation.buildSubstructure(ac, rootAtomIndex, maxNoOfSpheres);
         final Spectrum subspectrum = Fragmentation.createSubspectrum(substructure, atomType);
-        final Assignment assignment = Fragmentation.createAssignments(subspectrum, substructure, atomType);
+        final Assignment assignment = Fragmentation.createAssignments(subspectrum, substructure, atomType);                
         
         return new SSC(subspectrum, assignment, substructure, 0, maxNoOfSpheres);
     }
@@ -181,19 +217,36 @@ public class Fragmentation {
      * @param depth In which depth this search is
      * @return
      */
-    private static IAtomContainer BFS(final IAtomContainer ac, final int currentAtomIndex, final int predecessorAtomIndex, final int maxNoOfSpheres, IAtomContainer fragmentToBuild, final int depth) {
-
-        if ((currentAtomIndex < 0 || currentAtomIndex >= ac.getAtomCount()) 
-                || (depth >= maxNoOfSpheres)
+    private static IAtomContainer BFS(final IAtomContainer ac, final int currentAtomIndex, final int predecessorAtomIndex, final int maxNoOfSpheres, IAtomContainer fragmentToBuild, final int depth) {                
+        // check for valid atom indices as well as spheres count and ignore protons
+        if (!Utils.checkIndexInAtomContainer(ac, currentAtomIndex) 
+                || (depth > maxNoOfSpheres)
                 || ac.getAtom(currentAtomIndex).getSymbol().equals("H")) {
             return fragmentToBuild;
-        }
+        }                        
+        // last sphere: 
+        if (depth == maxNoOfSpheres) {
+            // connect atoms of substructure 
+            if((fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)) != -1)){
+                for (final IAtom connectedAtom : ac.getConnectedAtomsList(ac.getAtom(currentAtomIndex))) {
+                    if ((fragmentToBuild.indexOf(connectedAtom) != -1)
+                            && (fragmentToBuild.getBond(fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex))), fragmentToBuild.getAtom(fragmentToBuild.indexOf(connectedAtom))) == null)) {
+                        fragmentToBuild.addBond(fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)), fragmentToBuild.indexOf(connectedAtom), ac.getBond(ac.getAtom(currentAtomIndex), connectedAtom).getOrder());
+                    }
+                }
+            }
+            return fragmentToBuild;
+        }        
+        // add a new atom to substructure
         if (fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)) == -1){            
             fragmentToBuild.addAtom(ac.getAtom(currentAtomIndex));
-        }        
-        if ((predecessorAtomIndex != -1) && (fragmentToBuild.getBond(fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(predecessorAtomIndex))), fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)))) == null)){
+        }
+        // add a bond if 1. condition for start (0th sphere, no predecessor) and 2. bond does not already exist
+        if ((predecessorAtomIndex != -1) 
+                && (fragmentToBuild.getBond(fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(predecessorAtomIndex))), fragmentToBuild.getAtom(fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)))) == null)){
             fragmentToBuild.addBond(fragmentToBuild.indexOf(ac.getAtom(predecessorAtomIndex)), fragmentToBuild.indexOf(ac.getAtom(currentAtomIndex)), ac.getBond(ac.getAtom(predecessorAtomIndex), ac.getAtom(currentAtomIndex)).getOrder());
         }
+        // go to connected atoms
         for (final IAtom connectedAtom : ac.getConnectedAtomsList(ac.getAtom(currentAtomIndex))) {
             fragmentToBuild = Fragmentation.BFS(ac, ac.indexOf(connectedAtom), currentAtomIndex, maxNoOfSpheres, fragmentToBuild, depth + 1);
         }
@@ -202,7 +255,7 @@ public class Fragmentation {
     }
     
     /**
-     * Creates a subspectrum for an atom container from its atoms, including set
+     * Creates a 1D subspectrum for an atom container from its atoms, including set
      * NMR shift values in {@link IAtomContainer#getProperty(java.lang.Object)}.
      *
      * @param substructure IAtomContainer as substructure
@@ -229,12 +282,12 @@ public class Fragmentation {
      * @return
      */
     private static Assignment createAssignments(final Spectrum subspectrum, final IAtomContainer substructure, final String atomType){
-        int counter = 0;
+        int counterForSubspectrum = 0; // counts atoms of requested atom type
         final Assignment assignment = new Assignment(subspectrum);
         for (int i = 0; i < substructure.getAtomCount(); i++) {
             if (substructure.getAtom(i).getSymbol().equals(atomType) && (substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType)) != null)) {
-                assignment.setAssignment(0, counter, i);
-                counter++;
+                assignment.setAssignment(0, counterForSubspectrum, i);
+                counterForSubspectrum++;
             }
         }
         
