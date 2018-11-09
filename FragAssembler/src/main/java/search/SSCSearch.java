@@ -24,6 +24,7 @@
 package search;
 
 import casekit.NMR.Utils;
+import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,7 +45,8 @@ public class SSCSearch {
     private final HashMap<Integer, SSC> SSCLibrary;
     private final HashMap<String, ArrayList<Double>> HOSECodeLookupTable;
     private int nThreads, minOverlap;
-    private final HashMap<Integer, Double> matchFactors;
+    private final HashMap<Integer, Assignment> matchAssignments;
+    private final HashMap<Integer, Double> matchFactors;    
     private final ArrayList<Integer> rankedSSCIndices;
     
     /**
@@ -61,6 +63,7 @@ public class SSCSearch {
         this.minOverlap = 1;
         this.nThreads = 1;
         this.HOSECodeLookupTable = new HashMap<>();
+        this.matchAssignments = new HashMap<>();
         this.matchFactors = new HashMap<>();
         this.rankedSSCIndices = new ArrayList<>();
     }
@@ -144,6 +147,20 @@ public class SSCSearch {
     }
         
     /**
+     * Returns the match assignments between a query spectrum and SSCs in 
+     * SSC library which were not null itself.
+     * To create/update these match assignments the usage of the match 
+     * function is needed.
+     *
+     * @return 
+     *  
+     * @see #match(casekit.NMR.model.Spectrum, double) 
+     */
+    public HashMap<Integer, Assignment> getMatchAssignments(){
+        return this.matchAssignments;
+    }
+    
+    /**
      * Returns the match factors of SSCs in SSC library which were not null 
      * itself and its match factor against a query spectrum was not null.
      * To create/update these match factors the usage of the match 
@@ -211,17 +228,23 @@ public class SSCSearch {
      * @see #setMinOverlap(int) 
      * @see #setThreadNumber(int) 
      */
-    public void match(final Spectrum querySpectrum, final double tol) throws InterruptedException{
-        this.matchFactors.clear();        
-        
+    public void match(final Spectrum querySpectrum, final double tol) throws InterruptedException{                               
+        this.calculateMatchAssignments(querySpectrum, tol);
+        this.calculateMatchFactors(querySpectrum, tol);
+ 
+        this.rankSSCIndices();
+    }
+    
+    private void calculateMatchAssignments(final Spectrum querySpectrum, final double tol) throws InterruptedException{
+        this.matchAssignments.clear();
         // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);  
-        final ArrayList<Callable<HashMap<Integer, Double>>> callables = new ArrayList<>();
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<HashMap<Integer, Assignment>>> callables = new ArrayList<>();
         // add all task to do
         for (final SSC ssc : this.SSCLibrary.values()) {
-            callables.add((Callable<HashMap<Integer, Double>>) () -> {
-                final HashMap<Integer, Double> tempHashMap = new HashMap<>(); 
-                tempHashMap.put(ssc.getIndex(), ssc.getMatchFactor(querySpectrum, tol, this.minOverlap));
+            callables.add((Callable<HashMap<Integer, Assignment>>) () -> {
+                final HashMap<Integer, Assignment> tempHashMap = new HashMap<>();
+                tempHashMap.put(ssc.getIndex(), ssc.findMatches(querySpectrum, tol));
                 return tempHashMap;
             });
         }
@@ -236,14 +259,44 @@ public class SSCSearch {
                     }
                 })
                 .forEach((tempHashMap) -> {
-                    if(!tempHashMap.values().contains(null)){
-                        this.matchFactors.putAll(tempHashMap);
-                    }                    
+                    if (!tempHashMap.values().contains(null)) {
+                        this.matchAssignments.putAll(tempHashMap);
+                    }
                 });
         // shut down the executor service
-        Utils.stopExecuter(executor, 3);  
- 
-        this.rankSSCIndices();
+        Utils.stopExecuter(executor, 5);
+    }
+    
+    private void calculateMatchFactors(final Spectrum querySpectrum, final double tol) throws InterruptedException{
+        this.matchFactors.clear();
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<HashMap<Integer, Double>>> callables = new ArrayList<>();
+        // add all task to do
+        for (final SSC ssc : this.SSCLibrary.values()) {
+            callables.add((Callable<HashMap<Integer, Double>>) () -> {
+                final HashMap<Integer, Double> tempHashMap = new HashMap<>();
+                tempHashMap.put(ssc.getIndex(), ssc.getMatchFactor(ssc.getDeviations(querySpectrum, this.matchAssignments.get(ssc.getIndex())), this.minOverlap));
+                return tempHashMap;
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((tempHashMap) -> {
+                    if (!tempHashMap.values().contains(null)) {
+                        this.matchFactors.putAll(tempHashMap);
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
     }
     
     /**
@@ -256,17 +309,13 @@ public class SSCSearch {
         
         Collections.sort(this.rankedSSCIndices, new Comparator<Integer>() {
             @Override
-            public int compare(final Integer o1, final Integer o2) {    
-                if(SSCLibrary.get(o1).getAtomCount() >= SSCLibrary.get(o2).getAtomCount()){
-                    if(matchFactors.get(o1) <= matchFactors.get(o2)){
-                        return -1;
-                    }                    
-                } else {//if(SSCLibrary.get(o2).getAtomCount() > SSCLibrary.get(o1).getAtomCount()) {                
-                    if(matchFactors.get(o2) < matchFactors.get(o1)){
-                        return 1;
-                    }
+            public int compare(final Integer o1, final Integer o2) {          
+                final int setAssignmentsCountComp = -1 * Integer.compare(
+                        matchAssignments.get(o1).getSetAssignmentsCount(0), 
+                        matchAssignments.get(o2).getSetAssignmentsCount(0));
+                if(setAssignmentsCountComp != 0){
+                    return setAssignmentsCountComp;
                 }
-                
                 return Double.compare(matchFactors.get(o1), matchFactors.get(o2));
             }
         });
