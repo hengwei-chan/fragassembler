@@ -25,11 +25,13 @@ package search;
 
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
+import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -79,7 +81,7 @@ public class SSCSearch {
         this.HOSECodeLookupTable.clear();
         for (final SSC ssc : this.SSCLibrary.values()) {
             if(ssc != null){
-                Utils.combineHashMaps(this.HOSECodeLookupTable, ssc.getHOSELookupShifts());
+                Utils.combineHashMaps(this.HOSECodeLookupTable, ssc.getHOSECodeLookupShifts());
             }            
         }
     }
@@ -244,7 +246,7 @@ public class SSCSearch {
         for (final SSC ssc : this.SSCLibrary.values()) {
             callables.add((Callable<HashMap<Integer, Assignment>>) () -> {
                 final HashMap<Integer, Assignment> tempHashMap = new HashMap<>();
-                tempHashMap.put(ssc.getIndex(), ssc.findMatches(querySpectrum, tol));
+                tempHashMap.put(ssc.getIndex(), findMatches(ssc, querySpectrum, tol));
                 return tempHashMap;
             });
         }
@@ -276,7 +278,7 @@ public class SSCSearch {
         for (final SSC ssc : this.SSCLibrary.values()) {
             callables.add((Callable<HashMap<Integer, Double>>) () -> {
                 final HashMap<Integer, Double> tempHashMap = new HashMap<>();
-                tempHashMap.put(ssc.getIndex(), ssc.getMatchFactor(ssc.getDeviations(querySpectrum, this.matchAssignments.get(ssc.getIndex())), this.minOverlap));
+                tempHashMap.put(ssc.getIndex(), getMatchFactor(getDeviations(ssc, querySpectrum, ssc.getIndex()), this.minOverlap));
                 return tempHashMap;
             });
         }
@@ -319,5 +321,185 @@ public class SSCSearch {
                 return Double.compare(matchFactors.get(o1), matchFactors.get(o2));
             }
         });
+    }
+    
+    /**
+     * Returns the full list of matched shifts as atom indices between a SSC
+     * and a query spectrum.
+     * Despite intensities are given, they are still not considered here.
+     *
+     * @param ssc
+     * @param multiplicity Multiplicity as multiplet string, e.g. "S" (Singlet)
+     * @param shift Shift value [ppm]
+     * @param intensity Intensity value
+     * @param tol Tolerance value [ppm] used during shift matching
+     * @return
+     */
+    public ArrayList<Integer> findMatches(final SSC ssc, final String multiplicity, final double shift, final double intensity, final double tol) {
+        if (ssc.getPresenceMultiplicities().get(multiplicity) == null) {
+            return new ArrayList<>();
+        }
+        final HashSet<Integer> hs = new HashSet<>();
+        for (int i = (int) (shift - tol); i <= (int) (shift + tol); i++) {
+            if (Utils.checkMinMaxValue(ssc.getMinShift(), ssc.getMaxShift(), i)) {
+                hs.addAll(ssc.getPresenceMultiplicities().get(multiplicity).get(i));
+            }
+        }
+
+        return new ArrayList<>(hs);
+    }
+
+    /**
+     * Returns the closest shift matches between a SSC and a
+     * query spectrum as an Assignment object.
+     * Despite intensities are given, they are still not considered here.
+     *
+     * @param ssc
+     * @param querySpectrum Query spectrum
+     * @param tol Tolerance value [ppm] used during shift matching
+     * @return
+     */
+    public Assignment findMatches(final SSC ssc, final Spectrum querySpectrum, final double tol) {
+        final Assignment matchAssignmentsSSC = new Assignment(querySpectrum);
+        // wrong nucleus in query spectrum or this SSC contains no atoms of requested atom type
+        if (!Utils.getElementIdentifier(querySpectrum.getNuclei()[0]).equals(ssc.getAtomType())
+                || (ssc.getAtomTypeIndices().get(ssc.getAtomType()) == null)) {
+            return matchAssignmentsSSC;
+        }
+        Signal signal;
+        for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
+            signal = querySpectrum.getSignal(i);
+            matchAssignmentsSSC.setAssignment(0, i, this.getClosestMatch(ssc, this.findMatches(ssc, signal.getMultiplicity(), signal.getShift(0), signal.getIntensity(), tol), signal.getShift(0), tol));
+        }
+
+        // too many atoms of that atom type in SSC, but check for possible symmetry
+        if (ssc.getAtomTypeIndices().get(ssc.getAtomType()).size() > querySpectrum.getSignalCount()
+                || matchAssignmentsSSC.getSetAssignmentsCount(0) > ssc.getAtomTypeIndices().get(ssc.getAtomType()).size()) {
+//            System.out.println("Check for multiple assignments/symmetry!!!");
+            return new Assignment(querySpectrum);
+        }
+
+        return matchAssignmentsSSC;
+    }
+
+    private int getClosestMatch(final SSC ssc, final ArrayList<Integer> matchAtomIndices, final double queryShift, final double tol) {
+        int closestMatchIndex = -1;
+        double diff = tol, shiftMatchIndex;
+        for (final int matchIndex : matchAtomIndices) {
+            shiftMatchIndex = ssc.getSubstructure().getAtom(matchIndex).getProperty(Utils.getNMRShiftConstant(ssc.getAtomType()));
+            if (Math.abs(shiftMatchIndex - queryShift) < diff) {
+                diff = Math.abs(shiftMatchIndex - queryShift);
+                closestMatchIndex = matchIndex;
+            }
+        }
+
+        return closestMatchIndex;
+    }
+
+    /**
+     * Returns deviatons between matched shifts in SSC and query query spectrum.
+     * The matching procedure is already included here.
+     *
+     * @param ssc
+     * @param querySpectrum
+     * @param sscIndex
+     * @return
+     *
+     * @see #findMatches(model.SSC, casekit.NMR.model.Spectrum, double) 
+     */
+    public Double[] getDeviations(final SSC ssc, final Spectrum querySpectrum, final int sscIndex) {
+        final Double[] deviations = new Double[this.matchAssignments.get(sscIndex).getAssignmentsCount()];
+
+        double shiftMatchIndex;
+        for (int i = 0; i < this.matchAssignments.get(sscIndex).getAssignmentsCount(); i++) {
+            if (this.matchAssignments.get(sscIndex).getAtomIndex(0, i) == -1) {
+                deviations[i] = null;
+            } else {
+                shiftMatchIndex = ssc.getSubstructure().getAtom(this.matchAssignments.get(sscIndex).getAtomIndex(0, i)).getProperty(Utils.getNMRShiftConstant(ssc.getAtomType()));
+                deviations[i] = Math.abs(shiftMatchIndex - querySpectrum.getShift(i, 0));
+            }
+        }
+
+        return deviations;
+    }
+
+    /**
+     * Returns deviatons between matched shifts in SSC and query query spectrum.
+     * The matching procedure is already included here.
+     *
+     * @param ssc
+     * @param querySpectrum
+     * @param tol
+     * @return
+     *
+     * @see #findMatches(model.SSC, casekit.NMR.model.Spectrum, double) 
+     */
+    public Double[] getDeviations(final SSC ssc, final Spectrum querySpectrum, final double tol) {
+        final Double[] deviations = new Double[querySpectrum.getSignalCount()];
+        final Assignment matchAssignmentsSSC = this.findMatches(ssc, querySpectrum, tol);
+
+        double shiftMatchIndex;
+        for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
+            if (matchAssignmentsSSC.getAtomIndex(0, i) == -1) {
+                deviations[i] = null;
+            } else {
+                shiftMatchIndex = ssc.getSubstructure().getAtom(matchAssignmentsSSC.getAtomIndex(0, i)).getProperty(Utils.getNMRShiftConstant(ssc.getAtomType()));
+                deviations[i] = Math.abs(shiftMatchIndex - querySpectrum.getShift(i, 0));
+            }
+        }
+
+        return deviations;
+    }
+
+    /**
+     * Returns the average of all deviations of matched shifts between a SSC
+     * and a query spectrum.
+     * The calculation of deviations is already included here.
+     *
+     * @param ssc
+     * @param querySpectrum Query spectrum
+     * @param tol Tolerance value [ppm] used during shift matching
+     * @param minOverlap Minimum overlap threshold
+     * @return
+     *
+     * @see #getDeviations(model.SSC, casekit.NMR.model.Spectrum, double) 
+     */
+    public Double getMatchFactor(final SSC ssc, final Spectrum querySpectrum, final double tol, final int minOverlap) {
+        return this.getMatchFactor(this.getDeviations(ssc, querySpectrum, tol), minOverlap);
+    }
+
+    /**
+     * Returns the average of all deviations of matched shifts between a SSC
+     * and a query spectrum.
+     * If the minimum overlap threshold is not reached, a null value will be
+     * returned.
+     *
+     * @param deviations Deviations between a SSC subspectrum and query
+     * spectrum.
+     * @param minOverlap Minimum overlap threshold
+     * @return
+     *
+     * @see #getDeviations(model.SSC, casekit.NMR.model.Spectrum, double) 
+     */
+    public Double getMatchFactor(final Double[] deviations, final int minOverlap) {
+        int hitCounter = 0;
+        for (final Double deviation : deviations) {
+            if (deviation != null) {
+                hitCounter++;
+            }
+        }
+
+        return (hitCounter >= minOverlap) ? Utils.getMean(deviations) : null;
+    }
+    
+    public Spectrum predictSpectrum(final SSC ssc){
+        final Spectrum predictedSpectrum = new Spectrum(ssc.getSubspectrum().getNuclei());
+        for (final int i: ssc.getAtomTypeIndices().get(ssc.getAtomType())) {
+            if(this.getHOSECodeLookupTable().containsKey(ssc.getHOSECode(i))){
+                predictedSpectrum.addSignal(new Signal(ssc.getSubspectrum().getNuclei(), new Double[]{this.getHOSECodeLookupTableRMS().get(ssc.getHOSECode(i))}));
+            }
+        }
+        
+        return predictedSpectrum;
     }
 }
