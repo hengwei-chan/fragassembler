@@ -25,12 +25,10 @@ package model;
 
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
-import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
@@ -52,16 +50,16 @@ public final class SSC implements Cloneable {
     // spherical search limit
     private final int rootAtomIndex, maxSphere;
     // stores all shifts for each single HOSE code
-    private final HashMap<String, ArrayList<Double>> HOSELookupShifts;
+    private final HashMap<String, ArrayList<Double>> HOSECodeLookupShifts;
     // stores all atom indices for each single HOSE code
-    private final HashMap<String, ArrayList<Integer>> HOSELookupIndices;
+    private final HashMap<String, ArrayList<Integer>> HOSECodeLookupIndices;
     
     private final HashMap<Integer, HashMap<Integer, List<IAtom>>> atomsInHOSECodeSpheres;
     private final HashMap<Integer, HashMap<Integer, ArrayList<Integer>>> atomIndicesInHOSECodeSpheres;
     private final HashMap<Integer, HashMap<Integer, ArrayList<Integer>>> parentAtomIndicesInHOSECodeSpheres;
             
     // stores all atom indices for each occurring atom type in substructure    
-    private final HashMap<String, ArrayList<Integer>> atomTypeIndices;
+    private HashMap<String, ArrayList<Integer>> atomTypeIndices;
     // for pre-search: map of multiplicities as keys consisting 
     // of maps of shift values as keys and its atom indices
     private final HashMap<String, HashMap<Integer, ArrayList<Integer>>> presenceMultiplicities;
@@ -91,8 +89,8 @@ public final class SSC implements Cloneable {
         this.maxSphere = maxSphere;
         this.atomTypeIndices = Utils.getAtomTypeIndices(this.substructure);
         this.atomType = Utils.getAtomTypeFromSpectrum(this.subspectrum, 0);
-        this.HOSELookupShifts = new HashMap<>();
-        this.HOSELookupIndices = new HashMap<>();
+        this.HOSECodeLookupShifts = new HashMap<>();
+        this.HOSECodeLookupIndices = new HashMap<>();
         this.atomsInHOSECodeSpheres = new HashMap<>();
         this.atomIndicesInHOSECodeSpheres = new HashMap<>();
         this.parentAtomIndicesInHOSECodeSpheres = new HashMap<>();
@@ -109,6 +107,10 @@ public final class SSC implements Cloneable {
     public SSC clone() throws CloneNotSupportedException{
       return (SSC) super.clone();
     }
+    
+    public void updateAtomTypeIndices(){
+        this.atomTypeIndices = Utils.getAtomTypeIndices(this.substructure);
+    } 
     
     public void updateUnsaturatedAtomIndices() throws CDKException {
         final IChemObjectBuilder builder = SilentChemObjectBuilder.getInstance();
@@ -157,14 +159,14 @@ public final class SSC implements Cloneable {
         if(!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure) || (HOSECode == null)){
             return false;
         }
-        if (!this.HOSELookupShifts.containsKey(HOSECode)) {
-            this.HOSELookupShifts.put(HOSECode, new ArrayList<>());
-            this.HOSELookupIndices.put(HOSECode, new ArrayList<>());
+        if (!this.HOSECodeLookupShifts.containsKey(HOSECode)) {
+            this.HOSECodeLookupShifts.put(HOSECode, new ArrayList<>());
+            this.HOSECodeLookupIndices.put(HOSECode, new ArrayList<>());
         }
         if (this.substructure.getAtom(atomIndexInSubstructure).getProperty(Utils.getNMRShiftConstant(this.atomType)) != null) {
-            this.HOSELookupShifts.get(HOSECode).add(this.substructure.getAtom(atomIndexInSubstructure).getProperty(Utils.getNMRShiftConstant(this.atomType)));
+            this.HOSECodeLookupShifts.get(HOSECode).add(this.substructure.getAtom(atomIndexInSubstructure).getProperty(Utils.getNMRShiftConstant(this.atomType)));
         }
-        this.HOSELookupIndices.get(HOSECode).add(atomIndexInSubstructure);
+        this.HOSECodeLookupIndices.get(HOSECode).add(atomIndexInSubstructure);
         
         return true;
     }
@@ -173,8 +175,8 @@ public final class SSC implements Cloneable {
         if(!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)){
             return null;
         }
-        for (final String HOSECode : this.getHOSELookupIndices().keySet()) {
-            if (this.getHOSELookupIndices().get(HOSECode).contains(atomIndexInSubstructure)) {
+        for (final String HOSECode : this.getHOSECodeLookupIndices().keySet()) {
+            if (this.getHOSECodeLookupIndices().get(HOSECode).contains(atomIndexInSubstructure)) {
                 return HOSECode;
             }
         }
@@ -404,12 +406,12 @@ public final class SSC implements Cloneable {
         return this.getSubstructure().getBondCount();
     }
     
-    public HashMap<String, ArrayList<Double>> getHOSELookupShifts(){
-        return this.HOSELookupShifts;
+    public HashMap<String, ArrayList<Double>> getHOSECodeLookupShifts(){
+        return this.HOSECodeLookupShifts;
     }
     
-    public HashMap<String, ArrayList<Integer>> getHOSELookupIndices(){
-        return this.HOSELookupIndices;
+    public HashMap<String, ArrayList<Integer>> getHOSECodeLookupIndices(){
+        return this.HOSECodeLookupIndices;
     }        
     
     public HashMap<String, ArrayList<Integer>> getAtomTypeIndices(){
@@ -429,166 +431,7 @@ public final class SSC implements Cloneable {
         return this.unsaturatedAtomIndices;
     }
     
-    /**
-     * Returns the full list of matched shifts as atom indices between a SSC 
-     * and a query spectrum.
-     * Despite intensities are given, they are still not considered here.
-     *
-     * @param multiplicity Multiplicity as multiplet string, e.g. "S" (Singlet)
-     * @param shift Shift value [ppm]
-     * @param intensity Intensity value
-     * @param tol Tolerance value [ppm] used during shift matching
-     * @return
-     */
-    public ArrayList<Integer> findMatches(final String multiplicity, final double shift, final double intensity, final double tol) {
-        if (this.presenceMultiplicities.get(multiplicity) == null) {
-            return new ArrayList<>();
-        }
-        final HashSet<Integer> hs = new HashSet<>();
-        for (int i = (int) (shift - tol); i <= (int) (shift + tol); i++) {
-            if (Utils.checkMinMaxValue(this.minShift, this.maxShift, i)) {
-                hs.addAll(this.presenceMultiplicities.get(multiplicity).get(i));
-            }
-        }
-
-        return new ArrayList<>(hs);
-    }
-
-    /**
-     * Returns the closest shift matches between a SSC and a
-     * query spectrum as an Assignment object.
-     * Despite intensities are given, they are still not considered here.
-     *
-     * @param querySpectrum Query spectrum
-     * @param tol Tolerance value [ppm] used during shift matching
-     * @return
-     */
-    public Assignment findMatches(final Spectrum querySpectrum, final double tol) {
-        final Assignment matchAssignments = new Assignment(querySpectrum);
-        // wrong nucleus in query spectrum or this SSC contains no atoms of requested atom type
-        if (!Utils.getElementIdentifier(querySpectrum.getNuclei()[0]).equals(this.atomType) 
-                || (this.getAtomTypeIndices().get(this.atomType) == null)) {
-            return matchAssignments;
-        }        
-        Signal signal;
-        for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
-            signal = querySpectrum.getSignal(i);
-            matchAssignments.setAssignment(0, i, this.getClosestMatch(this.findMatches(signal.getMultiplicity(), signal.getShift(0), signal.getIntensity(), tol), signal.getShift(0), tol));
-        }
-        
-        // too many atoms of that atom type in SSC, but check for possible symmetry
-        if (this.getAtomTypeIndices().get(this.atomType).size() > querySpectrum.getSignalCount()
-                || matchAssignments.getSetAssignmentsCount(0) > this.getAtomTypeIndices().get(this.atomType).size()) {
-//            System.out.println("Check for multiple assignments/symmetry!!!");
-            return new Assignment(querySpectrum);
-        }
-
-        return matchAssignments;
-    }
-
-    private int getClosestMatch(final ArrayList<Integer> matchAtomIndices, final double queryShift, final double tol) {
-        int closestMatchIndex = -1;
-        double diff = tol, shiftMatchIndex;
-        for (final int matchIndex : matchAtomIndices) {
-            shiftMatchIndex = this.substructure.getAtom(matchIndex).getProperty(Utils.getNMRShiftConstant(this.atomType));
-            if (Math.abs(shiftMatchIndex - queryShift) < diff) {
-                diff = Math.abs(shiftMatchIndex - queryShift);
-                closestMatchIndex = matchIndex;
-            }
-        }
-
-        return closestMatchIndex;
-    }
-
-    /**
-     * Returns deviatons between matched shifts in SSC and query query spectrum.
-     * The matching procedure is already included here.
-     *
-     * @param querySpectrum
-     * @param matchAssignments 
-     * @return
-     *
-     * @see #findMatches(casekit.NMR.model.Spectrum, double) 
-     */
-    public Double[] getDeviations(final Spectrum querySpectrum, final Assignment matchAssignments) {
-        final Double[] deviations = new Double[matchAssignments.getAssignmentsCount()];
-
-        double shiftMatchIndex;
-        for (int i = 0; i < matchAssignments.getAssignmentsCount(); i++) {
-            if (matchAssignments.getAtomIndex(0, i) == -1) {
-                deviations[i] = null;
-            } else {
-                shiftMatchIndex = this.substructure.getAtom(matchAssignments.getAtomIndex(0, i)).getProperty(Utils.getNMRShiftConstant(this.atomType));
-                deviations[i] = Math.abs(shiftMatchIndex - querySpectrum.getShift(i, 0));
-            }
-        }
-
-        return deviations;
-    }
-    
-    /**
-     * Returns deviatons between matched shifts in SSC and query query spectrum.
-     * The matching procedure is already included here.
-     *
-     * @param querySpectrum
-     * @param tol
-     * @return
-     *
-     * @see #findMatches(casekit.NMR.model.Spectrum, double) 
-     */
-    public Double[] getDeviations(final Spectrum querySpectrum, final double tol) {
-        final Double[] deviations = new Double[querySpectrum.getSignalCount()];
-        final Assignment matchAssignments = this.findMatches(querySpectrum, tol);
-
-        double shiftMatchIndex;
-        for (int i = 0; i < querySpectrum.getSignalCount(); i++) {
-            if (matchAssignments.getAtomIndex(0, i) == -1) {
-                deviations[i] = null;
-            } else {
-                shiftMatchIndex = this.substructure.getAtom(matchAssignments.getAtomIndex(0, i)).getProperty(Utils.getNMRShiftConstant(this.atomType));
-                deviations[i] = Math.abs(shiftMatchIndex - querySpectrum.getShift(i, 0));
-            }
-        }
-
-        return deviations;
-    }
-
-    /**
-     * Returns the average of all deviations of matched shifts between a SSC 
-     * and a query spectrum. 
-     * The calculation of deviations is already included here.
-     *
-     * @param querySpectrum Query spectrum
-     * @param tol Tolerance value [ppm] used during shift matching
-     * @param minOverlap Minimum overlap threshold
-     * @return
-     * 
-     * @see model.SSC#getDeviations(casekit.NMR.model.Spectrum, double) 
-     */
-    public Double getMatchFactor(final Spectrum querySpectrum, final double tol, final int minOverlap) {
-        return this.getMatchFactor(this.getDeviations(querySpectrum, tol), minOverlap);
-    }
-    
-    /**
-     * Returns the average of all deviations of matched shifts between a SSC 
-     * and a query spectrum. 
-     * If the minimum overlap threshold is not reached, a null value will be 
-     * returned.
-     *
-     * @param deviations Deviations between a SSC subspectrum and query spectrum.
-     * @param minOverlap Minimum overlap threshold
-     * @return
-     * 
-     * @see model.SSC#getDeviations(casekit.NMR.model.Spectrum, double) 
-     */
-    public Double getMatchFactor(final Double[] deviations, final int minOverlap) {
-        int hitCounter = 0;
-        for (final Double deviation : deviations) {
-            if(deviation != null){
-                hitCounter++;
-            }
-        }
-        
-        return (hitCounter >= minOverlap) ? Utils.getMean(deviations) : null;
+    public String getAtomType(){
+        return this.atomType;
     }
 }
