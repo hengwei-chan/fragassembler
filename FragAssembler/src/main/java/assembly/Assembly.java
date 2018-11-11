@@ -130,7 +130,7 @@ public class Assembly {
                                     continue;
                                 }
                                 atomToAddInSSC1 = ssc2.getSubstructure().getAtom(atomIndicesInHOSECodeSphereSSC2.get(k));
-                                // add the known but missing atom to substructure
+                                // add the known but missing atom to substructure of SSC1 from SSC2
                                 if (!newSSC.getSubstructure().contains(atomToAddInSSC1)) {
                                     newSSC.getSubstructure().addAtom(atomToAddInSSC1);
                                     indexOfAddedAtomInSSC1 = newSSC.getSubstructure().indexOf(atomToAddInSSC1);
@@ -148,6 +148,8 @@ public class Assembly {
                                         newSSC.getSubspectrum().addSignal(ssc2.getSubspectrum().getSignal(signalIndexToAddFromSSC2));
                                         newSSC.getAssignments().addAssignment(new int[]{indexOfAddedAtomInSSC1});
                                     }    
+                                    // update the atom type indices in SSC
+                                    newSSC.updateAtomTypeIndices();
                                     // update list of unsaturated atoms in SSC1
                                     newSSC.updateUnsaturatedAtomIndices();
                                     // update present multiplicities and shifts inm SSC1
@@ -181,6 +183,6 @@ public class Assembly {
         }
         
         return newSSC;
-    }
+    }        
    
 }
