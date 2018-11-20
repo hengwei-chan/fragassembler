@@ -61,9 +61,9 @@ public class Fragmentation {
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
-    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads) throws InterruptedException, CDKException {                
+    public static HashMap<Integer, SSC> buildSSCLibrary(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads) throws InterruptedException, CDKException {                
         
-        return Fragmentation.buildSSCs(acSet, maxNoOfSpheres, atomType, nThreads, 0);
+        return Fragmentation.buildSSCLibrary(acSet, maxNoOfSpheres, atomType, nThreads, 0);
     }
     
     /**
@@ -85,7 +85,7 @@ public class Fragmentation {
      * @throws org.openscience.cdk.exception.CDKException
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
-    public static HashMap<Integer, SSC> buildSSCs(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads, final int offset) throws InterruptedException, CDKException {
+    public static HashMap<Integer, SSC> buildSSCLibrary(final IAtomContainerSet acSet, final int maxNoOfSpheres, final String atomType, final int nThreads, final int offset) throws InterruptedException, CDKException {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final HashMap<Integer, SSC> SSCs = new HashMap<>();
@@ -266,7 +266,10 @@ public class Fragmentation {
         final Spectrum subspectrum = new Spectrum(new String[]{Utils.getIsotopeIdentifier(atomType)});  
         for (int i = 0; i < substructure.getAtomCount(); i++) {
             if(substructure.getAtom(i).getSymbol().equals(atomType) && (substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType)) != null)){                
-                subspectrum.addSignal(new Signal(new String[]{Utils.getIsotopeIdentifier(atomType)}, new Double[]{substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType))}));
+                subspectrum.addSignal(new Signal(new String[]{Utils.getIsotopeIdentifier(atomType)}, 
+                        new Double[]{substructure.getAtom(i).getProperty(Utils.getNMRShiftConstant(atomType))},
+                null, Utils.getMultiplicityFromHydrogenCount(substructure.getAtom(i).getImplicitHydrogenCount())
+                ));
             }
         }
         

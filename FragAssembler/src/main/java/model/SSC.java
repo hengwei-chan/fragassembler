@@ -185,7 +185,8 @@ public final class SSC implements Cloneable {
     }
     
     public boolean setAtomsInHOSECodeSpheres(final int atomIndexInSubstructure, final List<IAtom> atomsInSpheres, final int sphere) {
-        if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)
+        if ((atomsInSpheres == null)
+                || !Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)
                 || sphere > this.getMaxSphere()) {
             return false;
         }
