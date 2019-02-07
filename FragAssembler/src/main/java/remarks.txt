@@ -1,7 +1,7 @@
 
 -   consider intensities in all match steps
+-   set aromaticities in each SSC sustructure too? (information is lost after building of fragment?!?)
 -   check for multiple assignments/symmetry in Assembly class (findMatches() 
-    and isSSCValid())
 -   add exceptions where needed
 -   deep cloning of SSC class (and used objects within that)
 -   unique parent assignments in SSC class: updateParentAtomIndicesInHOSECodeSpheres()
@@ -9,3 +9,8 @@
     -   during SSC extension
     -   as indicator after SSC entension?
 -   optimizing the steps for SSC extension?
+
+-   charges in HOSE code generation
+-   in predictSpectrum: usage of RMS or median of intensities too?
+
+-   ConcurrentHashMap instead of HashMap when using parallel mode?
