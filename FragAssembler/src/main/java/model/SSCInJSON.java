@@ -26,8 +26,6 @@ package model;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
-import java.util.HashMap;
-import java.util.Map;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.matrix.ConnectionMatrix;
 import org.openscience.cdk.interfaces.IAtom;
@@ -45,10 +43,10 @@ public class SSCInJSON {
     
     final double[][] connectionMatrix;
     final String[] atomTypes;
-    final Integer[] implicitHydrogenCounts, valencies;
+    final Integer[] hydrogenCounts, valencies;
     final Double[] charges;
     final boolean[] isInRingAtoms, isAromaticAtoms, isInRingBonds, isAromaticBonds;
-    final Map<Integer, Integer[]> bondIDs;
+    final Integer[][] bondIDs;
     final Spectrum subspectrum;
     final Assignment assignment;
     final int index, rootAtomIndex, maxSphere;
@@ -56,12 +54,12 @@ public class SSCInJSON {
     public SSCInJSON(final SSC ssc){
         this.connectionMatrix = ConnectionMatrix.getMatrix(ssc.getSubstructure());
         this.atomTypes = new String[ssc.getAtomCount()];
-        this.implicitHydrogenCounts = new Integer[ssc.getAtomCount()];
+        this.hydrogenCounts = new Integer[ssc.getAtomCount()];
         this.isInRingAtoms = new boolean[ssc.getAtomCount()];
         this.isAromaticAtoms = new boolean[ssc.getAtomCount()];
         this.valencies = new Integer[ssc.getAtomCount()];
         this.charges = new Double[ssc.getAtomCount()];
-        this.bondIDs = new HashMap<>();        
+        this.bondIDs = new Integer[ssc.getBondCount()][2];        
         this.isInRingBonds = new boolean[ssc.getSubstructure().getBondCount()];
         this.isAromaticBonds = new boolean[ssc.getSubstructure().getBondCount()];
                 
@@ -78,7 +76,7 @@ public class SSCInJSON {
     private void initAtomsProperties(final IAtomContainer structure){
         for (final IAtom atom : structure.atoms()) {
             this.atomTypes[atom.getIndex()] = atom.getSymbol();
-            this.implicitHydrogenCounts[atom.getIndex()] = atom.getImplicitHydrogenCount();
+            this.hydrogenCounts[atom.getIndex()] = atom.getImplicitHydrogenCount();
             this.isInRingAtoms[atom.getIndex()] = atom.isInRing();
             this.isAromaticAtoms[atom.getIndex()] = atom.isAromatic();
             this.valencies[atom.getIndex()] = atom.getValency();
@@ -88,7 +86,8 @@ public class SSCInJSON {
     
     private void initBondsProperties(final IAtomContainer structure){
         for (final IBond bond : structure.bonds()) {
-            this.bondIDs.put(bond.getIndex(), new Integer[]{bond.getAtom(0).getIndex(), bond.getAtom(1).getIndex()});
+            this.bondIDs[bond.getIndex()][0] = bond.getAtom(0).getIndex();
+            this.bondIDs[bond.getIndex()][1] = bond.getAtom(1).getIndex();
             this.isInRingBonds[bond.getIndex()] = bond.isInRing();
             this.isAromaticBonds[bond.getIndex()] = bond.isAromatic();
         }
@@ -109,7 +108,7 @@ public class SSCInJSON {
         IAtom atom;
         for (int i = 0; i < this.connectionMatrix.length; i++) {
             atom = new Atom(this.atomTypes[i]);
-            atom.setImplicitHydrogenCount(this.implicitHydrogenCounts[i]);
+            atom.setImplicitHydrogenCount(this.hydrogenCounts[i]);
             atom.setIsInRing(this.isInRingAtoms[i]);
             atom.setIsAromatic(this.isAromaticAtoms[i]);
             atom.setValency(this.valencies[i]);
@@ -119,12 +118,12 @@ public class SSCInJSON {
         }
         int atomIndex1, atomIndex2;
         IBond bond;
-        for (final int bondIndex : this.bondIDs.keySet()) {
-            atomIndex1 = this.bondIDs.get(bondIndex)[0];
-            atomIndex2 = this.bondIDs.get(bondIndex)[1];
+        for (int i = 0; i < this.bondIDs.length; i++) {
+            atomIndex1 = this.bondIDs[i][0];
+            atomIndex2 = this.bondIDs[i][1];
             bond = new Bond(substructure.getAtom(atomIndex1), substructure.getAtom(atomIndex2), Utils.getBondOrder((int) connectionMatrix[atomIndex1][atomIndex2]));
-            bond.setIsInRing(this.isInRingBonds[bondIndex]);
-            bond.setIsAromatic(this.isAromaticBonds[bondIndex]);
+            bond.setIsInRing(this.isInRingBonds[i]);
+            bond.setIsAromatic(this.isAromaticBonds[i]);
 
             substructure.addBond(bond);
         }               
