@@ -28,9 +28,7 @@ import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -38,7 +36,6 @@ import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
-import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 
 public class Fragmentation {
@@ -83,12 +80,12 @@ public class Fragmentation {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final SSCLibrary sscLibrary = new SSCLibrary();
-        final ArrayList<Callable<HashMap<Integer, SSC>>> callables = new ArrayList<>();
+        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
         // add all task to do        
         int offsetSSCIndex = offset;
         for (final int index: SSCComponentsSet.keySet()) {
             final int offsetSSCIndexFinalCopy = offsetSSCIndex;           
-            callables.add((Callable<HashMap<Integer, SSC>>) () -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxNoOfSpheres, offsetSSCIndexFinalCopy));
+            callables.add((Callable<SSCLibrary>) () -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxNoOfSpheres, offsetSSCIndexFinalCopy));
             offsetSSCIndex += ((IAtomContainer) SSCComponentsSet.get(index)[0]).getAtomCount();
         }
         // execute all task in parallel
@@ -105,7 +102,7 @@ public class Fragmentation {
                     sscLibrary.extend(sscs);                    
                 });
         // shut down the executor service
-        Utils.stopExecuter(executor, 3);                        
+        Utils.stopExecuter(executor, 5);                        
         
         
         return sscLibrary;
@@ -125,8 +122,7 @@ public class Fragmentation {
      * @throws java.lang.CloneNotSupportedException
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
-    private static HashMap<Integer, SSC> buildSSCs(final Object[] SSCComponentsSet, final int maxNoOfSpheres, final int offsetSSCIndex) throws CloneNotSupportedException, CDKException {
-           
+    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxNoOfSpheres, final int offsetSSCIndex) throws CloneNotSupportedException, CDKException {
         final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];        
         final Spectrum spectrum = (Spectrum) SSCComponentsSet[1];
         final Assignment assignment = (Assignment) SSCComponentsSet[2];
@@ -148,19 +144,18 @@ public class Fragmentation {
                 }
             }
         }
-        final HashMap<Integer, SSC> SSCs = new HashMap<>();
+        final SSCLibrary sscLibrary = new SSCLibrary();        
         SSC ssc;
         for (int i = 0; i < structure.getAtomCount(); i++) {      
             ssc = Fragmentation.buildSSC(structure, spectrum, assignment, i, maxNoOfSpheres);
             if (ssc == null) {
-//                System.out.println("no proper assignment between atoms and spectrum!!!");
-                return new HashMap<>();                
+                return new SSCLibrary();                
             }
-            SSCs.put(offsetSSCIndex + i, ssc);
-            SSCs.get(offsetSSCIndex + i).setIndex(offsetSSCIndex + i);
+            ssc.setIndex(offsetSSCIndex + i);
+            sscLibrary.insert(ssc);
         }
        
-        return SSCs;
+        return sscLibrary;
     }
     
     /**
@@ -197,7 +192,13 @@ public class Fragmentation {
         }
         Utils.setSpectrumEquivalences(subspectrum);
 
-        return new SSC(subspectrum, subassignment, substructure, 0, maxNoOfSpheres);
+        // tries to return a valid SSC with all complete information
+        // if something is missing/incomplete then null will be returned 
+        try {
+            return new SSC(subspectrum, subassignment, substructure, 0, maxNoOfSpheres);
+        } catch (CloneNotSupportedException | CDKException e) {
+            return null;
+        }         
     }
     
     /**
