@@ -31,13 +31,16 @@ import casekit.NMR.model.Spectrum;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import match.Match;
 import model.ConnectionTree;
 import model.ConnectionTreeNode;
 import model.SSC;
@@ -45,6 +48,8 @@ import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
+import org.openscience.cdk.isomorphism.UniversalIsomorphismTester;
+import org.openscience.cdk.isomorphism.mcss.RMap;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
@@ -76,7 +81,7 @@ public class Assembly {
                 if(i == j){
                     continue;
                 }
-                maxMatchingSphere = Assembly.getMaximumMatchingSphereHOSECode(ssc1.getHOSECode(i), ssc2.getHOSECode(j));
+                maxMatchingSphere = getMaximumMatchingSphereHOSECode(ssc1.getHOSECode(i), ssc2.getHOSECode(j));
                 
                 if((maxMatchingSphere >= minSphereMatchCount) && (maxMatchingSphere <= maxSphereMatchCount)){
                     if (!overlaps.containsKey(maxMatchingSphere)) {
@@ -91,7 +96,8 @@ public class Assembly {
     }    
     
     public static int getMaximumMatchingSphereHOSECode(final String HOSECode1, final String HOSECode2) {
-        final ArrayList<String> HOSECodeIntoSpheresSSC1 = HOSECodeBuilder.splitHOSECodeIntoSpheres(HOSECode1), HOSECodeIntoSpheresSSC2 = HOSECodeBuilder.splitHOSECodeIntoSpheres(HOSECode2);
+        final ArrayList<String> HOSECodeIntoSpheresSSC1 = HOSECodeBuilder.splitHOSECodeIntoSpheres(HOSECode1);
+        final ArrayList<String> HOSECodeIntoSpheresSSC2 = HOSECodeBuilder.splitHOSECodeIntoSpheres(HOSECode2);
         int maxMatchingSphere = -1;
         for (int s = 0; s < Integer.min(HOSECodeIntoSpheresSSC1.size(), HOSECodeIntoSpheresSSC2.size()); s++) {
             if (!HOSECodeIntoSpheresSSC1.get(s).equals(HOSECodeIntoSpheresSSC2.get(s))) {
@@ -99,114 +105,8 @@ public class Assembly {
             }
             maxMatchingSphere = s;
         }
-
         return maxMatchingSphere;
     }
-    
-    /**
-     * Returns pairwise atom indices of two structural overlapping atoms in both
-     * substructures, including the maximum matching sphere counts as keys.
-     *
-     * @param ssc1 first SSC
-     * @param ssc2 second SSC
-     * @param shiftTol
-     * @param minSphereMatchCount number of minimum matching spheres
-     * @param atomType
-     * @return pairs of atom indices; first in SSC1, second in SSC2
-     * @throws java.lang.CloneNotSupportedException
-     */
-    public static HashMap<Integer, ArrayList<Integer[]>> getStructuralOverlaps(final SSC ssc1, final SSC ssc2, final double shiftTol, final int minSphereMatchCount, final String atomType) throws CloneNotSupportedException {
-        final HashMap<Integer, ArrayList<Integer[]>> overlaps = new HashMap<>();
-        int maxMatchingSphere;
-        for (int i = 0; i < ssc1.getAtomCount(); i++) {    
-            if(!ssc1.getSubstructure().getAtom(i).getSymbol().equals(atomType)){
-                continue;
-            }
-            for (int j = 0; j < ssc2.getAtomCount(); j++) {
-                if (!ssc2.getSubstructure().getAtom(j).getSymbol().equals(atomType)) {
-                    continue;
-                }
-                
-                maxMatchingSphere = -1;
-//                if(Assembly.isEqualNode(ssc1.getConnectionTree(i).getRootNode(), ssc2.getConnectionTree(j).getRootNode(), 
-//                            ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, i)), 
-//                            ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, j)), shiftTol)){
-//                    maxMatchingSphere = Assembly.getMaximumMatchingSphereHOSECode(ssc1.getHOSECode(i), ssc2.getHOSECode(j));
-                    maxMatchingSphere = Assembly.getMaximumMatchingSphere(ssc1, ssc2, i, j, shiftTol);
-////                    System.out.println("i: " + i + ", " + j + ": " + maxMatchingSphere);
-//                }
-                
-                if ((maxMatchingSphere >= minSphereMatchCount)){// && (maxMatchingSphere <= maxSphereMatchCount)) {
-                    if(!overlaps.containsKey(maxMatchingSphere)){
-                        overlaps.put(maxMatchingSphere, new ArrayList<>());
-                    }
-                    overlaps.get(maxMatchingSphere).add(new Integer[]{i, j});
-                }
-            }
-        }
-
-        return overlaps;
-    }
-    
-    public static int getMaximumMatchingSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final double shiftTol) throws CloneNotSupportedException {
-        int maxMatchingSphere = -1;
-        for (int s = 0; s <= Integer.min(ssc1.getConnectionTree(atomIndexInSubstructure1).getMaxSphere(), ssc2.getConnectionTree(atomIndexInSubstructure2).getMaxSphere()); s++) {
-//            if(!Assembly.hasStructuralIdentity(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, s, shiftTol)){
-            if(!Assembly.hasEqualNodesInSphere(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, s, shiftTol)){
-                break;
-            }
-            maxMatchingSphere = s;
-        }
-        
-        return maxMatchingSphere;
-    }
-    
-//    public static boolean hasStructuralIdentity(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) throws CloneNotSupportedException {
-//        if(!Assembly.hasEqualNodesInSphere(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, sphere, shiftTol)){
-//            return false;
-//        }
-//        for (int i = 0; i < nodesInSphere1.size(); i++) {
-//            if (!Assembly.hasEqualChildNodesInNextSphere(connectionTree1, connectionTree2, nodesInSphere1.get(i), nodesInSphere2.get(i))
-//                    || !Assembly.hasEqualChildNodesInNextSphere(connectionTree2, connectionTree1, nodesInSphere2.get(i), nodesInSphere1.get(i))
-//                    ) {
-//                return false;
-//            }
-//        }
-//
-//        return true;
-//    }
-    
-    /**
-     * Checks whether connectionTree1 contains the exactly same node or bond 
-     * (at ring closure node) properties as in connectionTree2 in a specific 
-     * sphere.  
-     *
-     * @param ssc1
-     * @param ssc2
-     * @param atomIndexInSubstructure1
-     * @param atomIndexInSubstructure2
-     * @param sphere
-     * @param shiftTol
-     * @return
-     */
-    public static boolean hasEqualNodesInSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) {
-        final ArrayList<ConnectionTreeNode> nodesInSphere1 = ssc1.getConnectionTree(atomIndexInSubstructure1).getNodesInSphere(sphere);
-        final ArrayList<ConnectionTreeNode> nodesInSphere2 = ssc2.getConnectionTree(atomIndexInSubstructure2).getNodesInSphere(sphere);
-        if (nodesInSphere1.size() != nodesInSphere2.size()) {
-            return false;
-        }
-        Signal signal1, signal2;
-        for (int j = 0; j < nodesInSphere1.size(); j++) {
-            signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodesInSphere1.get(j).getKey()));
-            signal2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodesInSphere2.get(j).getKey()));
-            if(!isEqualNode(nodesInSphere1.get(j), nodesInSphere2.get(j), signal1, signal2, shiftTol)){
-                return false;                
-            }            
-        }
-
-        return true;
-    }
-    
     
     public static boolean isValidBondAddition(final IAtomContainer ac, final int atomIndex, final IBond bondToAdd){
         double existingBondsOrderSum = 0;
@@ -222,175 +122,6 @@ public class Assembly {
     }
     
     
-//    /**
-//     * Checks whether the exact same child nodes of a node1 in connectionTree1 
-//     * can be found at node2 in connectionTree2 in same next sphere and with 
-//     * same stored bond properties.
-//     *
-//     * @param connectionTree1
-//     * @param connectionTree2
-//     * @param node1
-//     * @param node2
-//     * @return
-//     * @throws CloneNotSupportedException
-//     */
-//    public static boolean hasEqualChildNodesInNextSphere(final ConnectionTree connectionTree1, final ConnectionTree connectionTree2, final ConnectionTreeNode node1, final ConnectionTreeNode node2) throws CloneNotSupportedException{
-//        // check whether all atoms from sphere in SSC1 were covered in SSC2
-//        return Assembly.getRetainedChildNodesInNextSphere(connectionTree1, connectionTree2, node1, node2).isEmpty();
-//    }
-//    
-//    /**
-//     * Returns the child nodes of node1 in connectionTree1 which can not be 
-//     * found as child nodes from node2 in connectionTree2.
-//     *
-//     * @param connectionTree1
-//     * @param connectionTree2
-//     * @param node1
-//     * @param node2
-//     * @return 
-//     * @throws CloneNotSupportedException
-//     */
-//    public static ArrayList<ConnectionTreeNode> getRetainedChildNodesInNextSphere(final ConnectionTree connectionTree1, final ConnectionTree connectionTree2, final ConnectionTreeNode node1, final ConnectionTreeNode node2) throws CloneNotSupportedException{
-//        final ArrayList<ConnectionTreeNode> childNodesInNextSphere1 = new ArrayList<>(node1.getChildNodes());
-//        final ArrayList<ConnectionTreeNode> childNodesInNextSphere2 = node2.getChildNodes();
-//        final ArrayList<ConnectionTreeNode> childNodesInNextSphere1ToRemove = new ArrayList<>();
-//        // remove all occurring child nodes in SSC2 from child nodes list in SSC1
-//        for (final ConnectionTreeNode childNodeInNextSphere2 : childNodesInNextSphere2) {
-//            if (childNodesInNextSphere1.isEmpty()) {
-//                break;
-//            }
-//            childNodesInNextSphere1ToRemove.clear();
-//            for (final ConnectionTreeNode childNodeInNextSphere1 : childNodesInNextSphere1) {
-//                if(Assembly.isEqualNode(childNodeInNextSphere1, childNodeInNextSphere2)){
-//                    childNodesInNextSphere1ToRemove.add(childNodeInNextSphere1);
-//                }
-//            }
-//            childNodesInNextSphere1.removeAll(childNodesInNextSphere1ToRemove);
-//        } 
-//           
-//        return childNodesInNextSphere1;
-//    }
-//    
-//    
-//    /**
-//     * Returns the nodes in connectionTree1 which can not be
-//     * found in connectionTree2 in the same sphere.
-//     *
-//     * @param connectionTree1
-//     * @param connectionTree2
-//     * @param sphere
-//     * @return
-//     * @throws CloneNotSupportedException
-//     */
-//    public static ArrayList<ConnectionTreeNode> getRetainedNodesInSphere(final ConnectionTree connectionTree1, final ConnectionTree connectionTree2, final int sphere) throws CloneNotSupportedException {
-//        if(sphere > Integer.min(connectionTree1.getMaxSphere(), connectionTree2.getMaxSphere())){
-//            return null;
-//        }
-//        final ArrayList<ConnectionTreeNode> retainedNodesInSphere = new ArrayList<>(connectionTree1.getNodesInSphere(sphere));
-//        final ArrayList<ConnectionTreeNode> equalNodesInSphere = Assembly.getEqualNodesInSphere(connectionTree1, connectionTree2, sphere);
-//        for (final ConnectionTreeNode equalNodeInSphere : equalNodesInSphere) {
-//            retainedNodesInSphere.remove(equalNodeInSphere);
-//        }
-//        
-//        return retainedNodesInSphere;
-//    }
-    
-    /**
-     * Returns the nodes in connectionTree1 which can not be
-     * found in connectionTree2 in the same sphere.
-     *
-     * @param ssc1
-     * @param ssc2
-     * @param atomIndexInSubstructure1
-     * @param atomIndexInSubstructure2
-     * @param sphere
-     * @param shiftTol
-     * @return
-     * @throws CloneNotSupportedException
-     */
-    public static HashMap<Integer, Integer> mapEqualNodesInSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) throws CloneNotSupportedException {
-        final ConnectionTree connectionTree1 = ssc1.getConnectionTree(atomIndexInSubstructure1);
-        final ConnectionTree connectionTree2 = ssc2.getConnectionTree(atomIndexInSubstructure2);
-        if (sphere > Integer.min(connectionTree1.getMaxSphere(), connectionTree2.getMaxSphere())) {
-            return null;
-        }
-        final HashMap<Integer, Integer> map = new HashMap<>();
-        Signal signal1, signal2;
-        // add matched node indices in connectionTree2 from nodes list in connectionTree1 in given sphere
-        for (final ConnectionTreeNode nodeInSphere1 : connectionTree1.getNodesInSphere(sphere)) {
-            // search for nodes from conn. tree 2 in conn. tree 1; if found then add it to map
-            for (final ConnectionTreeNode nodeInSphere2 : connectionTree2.getNodesInSphere(sphere)) {
-                signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodeInSphere1.getKey()));
-                signal2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodeInSphere2.getKey()));
-                if (!map.containsValue(nodeInSphere2.getKey()) && Assembly.isEqualNode(nodeInSphere1, nodeInSphere2, signal1, signal2, shiftTol)) {
-                    map.put(nodeInSphere1.getKey(), nodeInSphere2.getKey());
-                    break;
-                }
-            }
-            if(!map.containsKey(nodeInSphere1.getKey())){
-                map.put(nodeInSphere1.getKey(), -1);
-            }
-        }
-
-        return map;
-    }
-    
-    /**
-     * Returns whether two nodes have certain identical properties.
-     *
-     * @param nodeInSphere1
-     * @param nodeInSphere2
-     * @param signal1
-     * @param signal2
-     * @param shiftTol
-     * @return
-     */
-    public static boolean isEqualNode(final ConnectionTreeNode nodeInSphere1, final ConnectionTreeNode nodeInSphere2, final Signal signal1, final Signal signal2, final double shiftTol){
-        final IAtom atom1 = nodeInSphere1.getAtom(), atom2 = nodeInSphere2.getAtom();
-        final IBond bondToParent1, bondToParent2;        
-        final ConnectionTreeNode parentNode1, parentNode2;
-        if ((atom1 != null) && (atom2 != null) && !nodeInSphere1.isRingClosureNode() && !nodeInSphere2.isRingClosureNode()) {
-            if (atom1.getSymbol().equals(atom2.getSymbol())
-                    && (Integer.compare(atom1.getImplicitHydrogenCount(), atom2.getImplicitHydrogenCount()) == 0)
-                    && atom1.isAromatic() == atom2.isAromatic()
-                    && atom1.isInRing() == atom2.isInRing()
-                    ) {
-                if((signal1 != null) && (signal2 != null)
-                    && ((Math.abs(signal1.getShift(0) - signal2.getShift(0)) > shiftTol)
-                        || !signal1.getMultiplicity().equals(signal2.getMultiplicity()))){
-                    return false;
-                }
-                
-//                if ((nodeInSphere1.getSphere() > 0) && (nodeInSphere2.getSphere() > 0)) {
-//                    parentNode1 = nodeInSphere1.getParentNodes().get(0);
-//                    parentNode2 = nodeInSphere2.getParentNodes().get(0);
-//                    bondToParent1 = nodeInSphere1.getBondsToParents().get(0);
-//                    bondToParent2 = nodeInSphere2.getBondsToParents().get(0);
-//                    if (parentNode1.getAtom().getSymbol().equals(parentNode2.getAtom().getSymbol())
-//                            && bondToParent1.getOrder() == bondToParent2.getOrder()
-//                            && bondToParent1.isAromatic() == bondToParent2.isAromatic()
-//                            && bondToParent1.isInRing() == bondToParent2.isInRing()) {
-//                        return true;
-//                    } 
-//                } else if((nodeInSphere1.getSphere() == 0) && (nodeInSphere2.getSphere() == 0)){
-                    return true;                
-//                }                                
-            }
-        } else if (nodeInSphere1.isRingClosureNode() && nodeInSphere2.isRingClosureNode()) {
-            parentNode1 = nodeInSphere1.getParentNodes().get(0);
-            parentNode2 = nodeInSphere2.getParentNodes().get(0);
-            bondToParent1 = nodeInSphere1.getBondsToParents().get(0);
-            bondToParent2 = nodeInSphere2.getBondsToParents().get(0);
-            if (parentNode1.getAtom().getSymbol().equals(parentNode2.getAtom().getSymbol())
-                    && bondToParent1.getOrder() == bondToParent2.getOrder()
-                    && bondToParent1.isAromatic() == bondToParent2.isAromatic()
-                    && bondToParent1.isInRing() == bondToParent2.isInRing()) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
     
     /**
      *
@@ -419,11 +150,11 @@ public class Assembly {
         return predictedSpectrum;
     } 
     
-    public static boolean isValidSpectrum(final Spectrum spectrum, final Spectrum querySpectrum, final double tol, final double thrsMatchFactor){
-        if(spectrum == null){
+    public static boolean isValidSubspectrum(final Spectrum subspectrum, final Spectrum querySpectrum, final double pickPrecisiom, final double thrsMatchFactor){
+        if(subspectrum == null){
             return false;
         }
-        final Assignment matchAssignments = Assembly.matchSpectra(spectrum, querySpectrum, tol);
+        final Assignment matchAssignments = Match.matchSpectra(subspectrum, querySpectrum, pickPrecisiom);
 //        System.out.println("predicted spectrum:\t" + spectrum.getShifts(0));
 //        System.out.println("predicted spectrum equ.:" + spectrum.getEquivalences());
 //        System.out.println("query spectrum   :\t" + querySpectrum.getShifts(0));
@@ -452,7 +183,7 @@ public class Assembly {
 //            }
 //        }   
         // filter for match factor
-        if (Assembly.getMatchFactor(spectrum, querySpectrum, tol)> thrsMatchFactor) {
+        if (Match.getMatchFactor(subspectrum, querySpectrum, pickPrecisiom)> thrsMatchFactor) {
 //            System.out.println("-> match factor not allowed!!!");
             return false;
         }
@@ -460,207 +191,6 @@ public class Assembly {
         return true;
     }    
         
-    /**
-     * Returns the closest shift matches between two spectra as an 
-     * Assignment object.
-     * Despite intensities are expected, they are still not considered here.
-     *
-     * @param spectrum1
-     * @param spectrum2
-     * @param pickPrecision Tolerance value [ppm] used during peak peaking
-     * @return Assignments with signal indices of spectrum1 and matched indices 
-     * in spectrum2; assignments are unset (-1) if spectrum1 has a different nucleus
-     * than spectrum2
-     */
-    public static Assignment matchSpectra(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
-        final Assignment matchAssignments = new Assignment(spectrum1);
-        // first nuclei in both spectra are not the same
-        if (!spectrum1.getNuclei()[0].equals(spectrum2.getNuclei()[0])) {
-            return matchAssignments;
-        }
-        final HashSet<Integer> pickedSignalIndices = new HashSet<>();
-        int pickedSignalIndexSpectrum2, pickedSignalIndexSpectrum2Prev;
-        for (int i = 0; i < spectrum1.getSignalCount(); i++) {
-            if(spectrum1.getShift(i, 0) == null){
-                pickedSignalIndexSpectrum2 = -1;
-            } else {           
-                pickedSignalIndexSpectrum2 = spectrum2.pickClosestSignal(spectrum1.getShift(i, 0), 0, pickPrecision);
-                // if matched signal is already assigned, then consider symmetries (equiv. signals)
-                if (pickedSignalIndices.contains(pickedSignalIndexSpectrum2)) {
-                    // symmetry exists
-                    if (spectrum2.hasEquivalences(pickedSignalIndexSpectrum2)) {
-                        pickedSignalIndexSpectrum2Prev = pickedSignalIndexSpectrum2;
-                        // assign the next signal in equivalence list
-                        for (final int equivalentSignalIndexSpectrum2 : spectrum2.getEquivalentSignals(pickedSignalIndexSpectrum2)) {
-                            if(!pickedSignalIndices.contains(equivalentSignalIndexSpectrum2)){
-                                pickedSignalIndexSpectrum2 = equivalentSignalIndexSpectrum2;
-                                break;
-                            }
-                        }
-                        // if no further equivalent signal exists then that match is not valid
-                        if(pickedSignalIndexSpectrum2 == pickedSignalIndexSpectrum2Prev){
-                            pickedSignalIndexSpectrum2 = -1;
-                        }
-                    } else {
-                        // not symmetric signals but the same (predicted) or very similar shifts and multiple assignments to catch
-                        // -> still open
-                        pickedSignalIndexSpectrum2 = -1;
-                    }
-                }
-                // check multiplicity 
-                if((spectrum1.getMultiplicity(i) == null) 
-                        || (spectrum2.getMultiplicity(pickedSignalIndexSpectrum2) == null)
-                        || !spectrum1.getMultiplicity(i).equals(spectrum2.getMultiplicity(pickedSignalIndexSpectrum2))) {
-                    pickedSignalIndexSpectrum2 = -1;
-                }
-            }     
-            // add only truly assigned signal to list of already assigned signals
-            if (pickedSignalIndexSpectrum2 != -1) {
-                pickedSignalIndices.add(pickedSignalIndexSpectrum2);
-            }
-            // set picked signal index in assignment object
-            matchAssignments.setAssignment(0, i, pickedSignalIndexSpectrum2);
-        }   
-        // try to assign the still unassigned shifts in spectrum1 to shifts in spectrum2
-//        System.out.println("--> assignments before:\t" + Utils.ArrayToArrayList(matchAssignments.getAtomIndices(0)));
-//        ArrayList<Integer> pickedSignalIndicesInSpectrum2;
-//        for (int i = 0; i < matchAssignments.getAssignmentsCount(); i++) {
-//            final Double queryShiftSpectrum1 = spectrum1.getShift(i, 0);
-//            if ((matchAssignments.getAtomIndex(0, i) == -1) && (queryShiftSpectrum1 != null)) {
-//                pickedSignalIndicesInSpectrum2 = spectrum2.pickSignals(queryShiftSpectrum1, 0, pickPrecision);
-//                for (final int pickedSignalIndexInSpectrum2 : pickedSignalIndicesInSpectrum2) {
-//                    if (!pickedSignalIndices.contains(pickedSignalIndexInSpectrum2)
-//                            && (spectrum1.getMultiplicity(i) != null)
-//                            && (spectrum2.getMultiplicity(pickedSignalIndexInSpectrum2) != null)
-//                            && spectrum1.getMultiplicity(i).equals(spectrum2.getMultiplicity(pickedSignalIndexInSpectrum2))) {
-//                        matchAssignments.setAssignment(0, i, pickedSignalIndexInSpectrum2);
-//                        pickedSignalIndices.add(pickedSignalIndexInSpectrum2);
-//                        break;
-//                    }
-//                }
-//            }
-//        }
-//        System.out.println("--> assignments after:\t" + Utils.ArrayToArrayList(matchAssignments.getAtomIndices(0)));
-        
-
-        return matchAssignments;
-    }    
-
-    /**
-     * Returns deviatons between matched shifts in SSC and query query spectrum.
-     * The matching procedure is already included here.
-     *
-     * @param spectrum1 
-     * @param spectrum2
-     * @param pickPrecision
-     * @return
-     *
-     * @see #matchSpectra(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double) 
-     */
-    public static Double[] getDeviations(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
-        final Double[] deviations = new Double[spectrum1.getSignalCount()];
-        final Assignment matchAssignments = Assembly.matchSpectra(spectrum1, spectrum2, pickPrecision);
-        Signal matchedSignalInSpectrum2;
-        for (int i = 0; i < spectrum1.getSignalCount(); i++) {
-            if (matchAssignments.getAtomIndex(0, i) == -1) {
-                deviations[i] = null;
-            } else {
-                matchedSignalInSpectrum2 = spectrum2.getSignal(matchAssignments.getAtomIndex(0, i));
-                deviations[i] = Math.abs(spectrum1.getSignal(i).getShift(0) - matchedSignalInSpectrum2.getShift(0));
-            }
-        }
-
-        return deviations;
-    }
-        
-    /**
-     * Returns the average of all deviations within a given input array.
-     * If the minimum overlap threshold is not reached, a null value will be
-     * returned.
-     *
-     * @param deviations Deviations
-     * @return
-     *
-     * @see #getDeviations(model.SSC, casekit.NMR.model.Spectrum, double)
-     */
-    public static Double getMatchFactor(final Double[] deviations) {
-        for (final Double deviation : deviations) {
-            if (deviation == null) {
-                return null;
-            }
-        }
-
-        return Utils.getMean(deviations);
-    }
-
-    /**
-     * Returns the average of all deviations of matched shifts between two 
-     * spectra.
-     * The calculation of deviations is already included here.
-     *
-     * @param spectrum1 
-     * @param spectrum2
-     * @param pickPrecision Tolerance value [ppm] used during peak picking in 
-     * shift comparison
-     * @return
-     *
-     * @see #getDeviations(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double) 
-     * @see casekit.NMR.Utils#getMatchFactor(java.lang.Double[], int) 
-     */
-    public static Double getMatchFactor(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
-        return Assembly.getMatchFactor(Assembly.getDeviations(spectrum1, spectrum2, pickPrecision));
-    }
-    
-    /**
-     * Combines two 1D spectra while considering possible equivalent signals 
-     * via the pickPrecision parameter and multiplicity comparison.
-     * 
-     *
-     * @param spectrum1 first spectrum
-     * @param spectrum2 second spectrum
-     * @param pickPrecision tolerance value used for signal shift matching to 
-     * find equivalent signals
-     * @return
-     */
-    public static Spectrum combineSpectra(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision){
-        // check for same spectrum dimension count and same nuclei in both spectra
-        if((spectrum1.getDimCount() != 1) 
-                || (spectrum1.getDimCount() != spectrum2.getDimCount()) 
-                || !spectrum1.getNuclei()[0].equals(spectrum2.getNuclei()[0])){
-            return null;
-        }           
-//        // create new spectra which is to fill with signals of both spectra
-//        final Spectrum combinedSpectrum = new Spectrum(spectrum1.getNuclei());        
-//        // fill in signals from spectrum1
-//        // consider the possibility of potential equivalent signals here
-        int equivalentSignalIndex;
-//        for (final Signal signalSpectrum1 : spectrum1.getSignals()) {
-//            equivalentSignalIndex = -1;
-//            for (final int closestSignalIndex : combinedSpectrum.pickSignals(signalSpectrum1.getShift(0), 0, pickPrecision)) {
-//                if(signalSpectrum1.getMultiplicity().equals(combinedSpectrum.getSignal(closestSignalIndex).getMultiplicity())){
-//                    equivalentSignalIndex = closestSignalIndex;
-//                    break;
-//                }
-//            }
-//            combinedSpectrum.addSignal(signalSpectrum1, equivalentSignalIndex);      
-//        }
-        
-        // create new spectra which is to fill with signals of both spectra
-        final Spectrum combinedSpectrum = spectrum1.getClone();
-        // fill in signals from spectrum2
-        // consider the possibility of potential equivalent signals here
-        for (final Signal signalSpectrum2 : spectrum2.getSignals()) {
-            equivalentSignalIndex = -1;
-            for (final int closestSignalIndex : combinedSpectrum.pickSignals(signalSpectrum2.getShift(0), 0, pickPrecision)) {
-                if (signalSpectrum2.getMultiplicity().equals(combinedSpectrum.getSignal(closestSignalIndex).getMultiplicity())) {
-                    equivalentSignalIndex = closestSignalIndex;
-                }
-            }
-            combinedSpectrum.addSignal(signalSpectrum2, equivalentSignalIndex);                        
-        }        
-        
-        return combinedSpectrum;
-    }
     
     public static HashMap<String, SSC> assemble(final int nStartSSCs, final int nThreads, final SSCRanker sscRanker, final int minMatchingSphereCount, 
             final Spectrum querySpectrum, final double shiftTol, final double thrsMatchFactor, final double pickPrecision) throws InterruptedException{
@@ -714,6 +244,20 @@ public class Assembly {
         HashSet<Integer> missingAtomIndicesSSC2;
         HashMap<Integer, ArrayList<Integer[]>> overlaps;
         
+        // check whether the current SSC is already a final SSC
+        if (Assembly.isFinalSSC(ssc1, querySpectrum)) {
+            structureAsSMILES = smilesGenerator.create(ssc1.getSubstructure());
+            solutions.put(structureAsSMILES, ssc1);
+            System.out.println("--> new solution found!!! -> " + solutions.size() + " -> " + structureAsSMILES);
+            System.out.println("-> atom count: " + ssc1.getAtomCount() + ", bond count: " + ssc1.getBondCount());
+            System.out.println("-> query spectrum:\t" + querySpectrum.getShifts(0));
+            System.out.println("-> equivalences:\t" + querySpectrum.getEquivalences());
+            System.out.println("-> pred. spectrum:\t" + ssc1.getSubspectrum().getShifts(0));
+            System.out.println("-> equivalences:\t" + ssc1.getSubspectrum().getEquivalences());
+            Utils.generatePicture(smilesParser.parseSmiles(structureAsSMILES), "/Users/mwenk/Downloads/outputs/out_final_" + structureAsSMILES + ".png");
+            return solutions;
+        }
+        
         
         for (int ssc2Index = 0; ssc2Index < rankedSSCIndices.size(); ssc2Index++) {
             if (ssc2Index == startSSCIndex) {
@@ -724,29 +268,59 @@ public class Assembly {
             System.out.println("\n\n-------------------------------- " + startSSCIndex + ", " + ssc2Index + " --------------------------------");
 
             
+            
+            
+            
+            
+//            System.out.println("\n\nMCSS:\n");
+//            final UniversalIsomorphismTester universalIsomorphismTester = new UniversalIsomorphismTester();
+//            List<IAtomContainer> structuralOverlaps = universalIsomorphismTester.getOverlaps(ssc1.getSubstructure(), ssc2.getSubstructure());
+//            structuralOverlaps.sort(new Comparator<IAtomContainer>() {
+//                @Override
+//                public int compare(final IAtomContainer ac1, final IAtomContainer ac2) {
+//                    return -1 * Integer.compare(ac1.getAtomCount(), ac2.getAtomCount());
+//                }
+//            });
+//            System.out.println("-> " + startSSCIndex + ", " + ssc2Index + " -> " + structuralOverlaps.size());
+//    
+//            mappedAtomIndices = new HashMap<>();
+//            for (int j = 0; j < structuralOverlaps.size(); j++){
+//                System.out.println(" -> j: " + j);
+//                Utils.generatePicture(ssc1.getSubstructure(), "/Users/mwenk/Downloads/outputs/overlap_" + startSSCIndex + "_" + ssc2Index + "_" + j + "_p1.png");
+//                Utils.generatePicture(ssc2.getSubstructure(), "/Users/mwenk/Downloads/outputs/overlap_" + startSSCIndex + "_" + ssc2Index + "_" + j + "_p2.png");
+//                Utils.generatePicture(structuralOverlaps.get(j), "/Users/mwenk/Downloads/outputs/overlap_" + startSSCIndex + "_" + ssc2Index + "_" + j + ".png");
+//                List<RMap> atomMapsSSC1 = universalIsomorphismTester.getSubgraphAtomsMap(ssc1.getSubstructure(), structuralOverlaps.get(j));
+//                List<RMap> atomMapsSSC2 = universalIsomorphismTester.getSubgraphAtomsMap(ssc2.getSubstructure(), structuralOverlaps.get(j));
+//                for (final RMap atomMapSSC1 : atomMapsSSC1) {
+//                    for (final RMap atomMapSSC2 : atomMapsSSC2) {
+//                        if (atomMapSSC1.getId2() == atomMapSSC2.getId2()
+//                                && !mappedAtomIndices.containsKey(atomMapSSC2.getId1())
+//                                && !mappedAtomIndices.containsValue(atomMapSSC1.getId1())) {
+//                            mappedAtomIndices.put(atomMapSSC2.getId1(), atomMapSSC1.getId1());
+//                        }
+//                    }
+//
+//                }
+//                missingAtomIndicesSSC2 = Assembly.getMissingAtomIndices(ssc2, mappedAtomIndices.keySet());
+//                System.out.println("----> mapped atom indices: " + mappedAtomIndices);
+//                System.out.println("----> missing atom indices SSC2: " + missingAtomIndicesSSC2);
+//            }
+//            System.out.println("\nMCSS ends:\n\n");
+//            if (true) {
+//                continue;
+//            }
+            
+            
+            
+            
+            
+            
             // 1. check for partial structural identity (overlaps); via HOSE code or connection tree comparison                                        
-            overlaps = Assembly.getStructuralOverlaps(ssc2, ssc1, shiftTol, minMatchingSphereCount, ssc1.getSubspectrumAtomType());
+            overlaps = getStructuralOverlaps(ssc2, ssc1, shiftTol, minMatchingSphereCount, ssc1.getSubspectrumAtomType());
             // if there is no structural identity then skip that SSC pair comparison            
             if (overlaps.isEmpty()) {
                 continue;
-            }
-            
-            // check whether the current SSC is already a final SSC
-            if (Assembly.isFinalSSC(ssc1, querySpectrum)) {
-                structureAsSMILES = smilesGenerator.create(ssc1.getSubstructure());
-                if (!solutions.containsKey(structureAsSMILES)) {
-                    solutions.put(structureAsSMILES, ssc1);
-                    System.out.println("--> new solution found!!! -> " + solutions.size() + " -> " + structureAsSMILES);
-                    System.out.println("-> atom count: " + ssc1.getAtomCount() + ", bond count: " + ssc1.getBondCount());
-                    System.out.println("-> query spectrum:\t" + querySpectrum.getShifts(0));
-                    System.out.println("-> equivalences:\t" + querySpectrum.getEquivalences());
-                    System.out.println("-> pred. spectrum:\t" + ssc1.getSubspectrum().getShifts(0));
-                    System.out.println("-> equivalences:\t" + ssc1.getSubspectrum().getEquivalences());
-                    Utils.generatePicture(smilesParser.parseSmiles(structureAsSMILES), "/Users/mwenk/Downloads/outputs/out_final_" + structureAsSMILES + ".png");
-                }
-                break;
-            }
-            
+            }            
             ssc1Backup = ssc1.getClone();
             subspectrumSSC2Clone = ssc2.getSubspectrum().getClone();                                      
             
@@ -755,7 +329,7 @@ public class Assembly {
             System.out.println("-> maxMatchingSphere: " + maxMatchingSphere);
             
             // 1.1 map structural overlaps
-            mappedAtomIndices = Assembly.mapStructuralOverlaps(ssc1, ssc2, overlaps, shiftTol);
+            mappedAtomIndices = mapStructuralOverlaps(ssc1, ssc2, overlaps, shiftTol);
             if (mappedAtomIndices.isEmpty()) {
                 continue;
             }
@@ -777,7 +351,7 @@ public class Assembly {
             }
 
             // 2. combine subspectra of SSC to extend and matched SSC and validate it
-            combinedSpectrum = Assembly.combineSpectra(ssc1.getSubspectrum(), subspectrumSSC2Clone, pickPrecision);
+            combinedSpectrum = Match.combineSpectra(ssc1.getSubspectrum(), subspectrumSSC2Clone, pickPrecision);
 //            System.out.println("\nspectrum1:\t" + ssc1.getSubspectrum().getShifts(0));
 //            System.out.println("spectrum2:\t" + ssc2.getSubspectrum().getShifts(0));
 //            System.out.println("spectrum2a:\t" + subspectrumSSC2Clone.getShifts(0));
@@ -785,7 +359,7 @@ public class Assembly {
 //            System.out.println("spectrum3 equ:\t" + combinedSpectrum.getEquivalences());
 
             // if no valid spectrum could be built then go to next pairwise SSC comparison
-            if ((combinedSpectrum == null) || !Assembly.isValidSpectrum(combinedSpectrum, querySpectrum, shiftTol, thrsMatchFactor)) {
+            if ((combinedSpectrum == null) || !Assembly.isValidSubspectrum(combinedSpectrum, querySpectrum, shiftTol, thrsMatchFactor)) {
 //                System.out.println("-> no valid combined spectrum!");
                 continue;
             }
@@ -822,8 +396,8 @@ public class Assembly {
             }
             
             
-//            Utils.generatePicture(smilesParser.parseSmiles(smilesGenerator.create(ssc1.getSubstructure())), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
-            Utils.generatePicture(ssc1.getSubstructure(), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
+            Utils.generatePicture(smilesParser.parseSmiles(smilesGenerator.create(ssc1.getSubstructure())), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
+//            Utils.generatePicture(ssc1.getSubstructure(), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
             
             if(Assembly.isFinalSSC(ssc1, querySpectrum)){
                 structureAsSMILES = smilesGenerator.create(ssc1.getSubstructure());
@@ -852,7 +426,7 @@ public class Assembly {
                     ConnectionTreeNode node2 = ssc1.getConnectionTree(unsaturatedAtomIndex2).getRootNode();
                     Signal signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, unsaturatedAtomIndex1));
                     Signal signal2 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, unsaturatedAtomIndex2));
-                    if(Assembly.isEqualNode(node1, node2, signal1, signal2, shiftTol)){
+                    if(Match.isEqualNode(node1, node2, signal1, signal2, shiftTol)){
                         System.out.println(" -> link!!!");
                         IAtom unsaturatedAtom1 = ssc1.getSubstructure().getAtom(unsaturatedAtomIndex1);
                         IAtom unsaturatedAtom2 = ssc1.getSubstructure().getAtom(unsaturatedAtomIndex2);
@@ -893,7 +467,7 @@ public class Assembly {
         return !ssc.hasUnsaturatedAtoms() && (ssc.getSubspectrum().getSignalCount() == querySpectrum.getSignalCount());
     }
     
-    public static HashSet<Integer> getMissingAtomIndices(final SSC ssc, final Set<Integer> mappedAtomIndices){
+    private static HashSet<Integer> getMissingAtomIndices(final SSC ssc, final Set<Integer> mappedAtomIndices){
         final HashSet<Integer> missingAtomIndices = new HashSet<>();
         for (int k = 0; k < ssc.getAtomCount(); k++) {
             if (!mappedAtomIndices.contains(k)) {
@@ -904,105 +478,6 @@ public class Assembly {
         return missingAtomIndices;
     }
     
-    public static HashMap<Integer, Integer> mapStructuralOverlaps(final SSC ssc1, final SSC ssc2, final HashMap<Integer, ArrayList<Integer[]>> overlaps, final double shiftTol) throws CDKException, CloneNotSupportedException{
-        
-        final HashMap<Integer, Integer> mappedAtomIndices = new HashMap<>();
-        HashMap<Integer, Integer> mappedEqualNodesKeys;
-        int overlapAtomIndexSSC1, overlapAtomIndexSSC2, mappedAtomIndexSSC1, mappedAtomIndexSSC2;
-        boolean containsUnsaturatedAtomsSSC1;
-        
-        for (int m = Collections.max(overlaps.keySet()); m >= Collections.min(overlaps.keySet()); m--) {
-            if (!overlaps.containsKey(m)) {
-                continue;
-            }
-                        
-            System.out.println("\n -> m: " + m);
-            for (final Integer[] overlap : overlaps.get(m)) {
-                overlapAtomIndexSSC2 = overlap[0];
-                overlapAtomIndexSSC1 = overlap[1];
-                System.out.println("\n--> overlap: " + overlapAtomIndexSSC2 + ", " + overlapAtomIndexSSC1);                
-                System.out.println("HOSE code ssc1:\t" + HOSECodeBuilder.buildHOSECode(ssc1.getConnectionTree(overlapAtomIndexSSC1), false));
-                System.out.println("HOSE code ssc2:\t" + HOSECodeBuilder.buildHOSECode(ssc2.getConnectionTree(overlapAtomIndexSSC2), false));                
-
-                containsUnsaturatedAtomsSSC1 = false;
-                for (final int nodeKey : ssc1.getConnectionTree(overlapAtomIndexSSC1).getKeysInOrder(true)) {                   
-                    if(ssc1.isUnsaturated(nodeKey)){
-                        containsUnsaturatedAtomsSSC1 = true;
-                        break;
-                    }
-                }
-                
-                if (!containsUnsaturatedAtomsSSC1) {
-                    System.out.println("\nnothing unsaturated -> skip this overlap");
-                    continue;
-                }                                
-
-                // add mappings of all atoms between SSC1 and SSC2 which have an identical structural overlap
-                for (int s = 0; s <= m; s++) {
-                    for (int i = 0; i < ssc2.getConnectionTree(overlapAtomIndexSSC2).getNodesCountInSphere(s); i++) {
-                        mappedAtomIndexSSC2 = ssc2.getConnectionTree(overlapAtomIndexSSC2).getNodeKeysInSphere(s).get(i);
-                        mappedAtomIndexSSC1 = ssc1.getConnectionTree(overlapAtomIndexSSC1).getNodeKeysInSphere(s).get(i);
-                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
-                            continue;
-                        }
-                        if (mappedAtomIndexSSC1 == -1) {
-                            continue;
-                        }
-                        if (mappedAtomIndices.containsKey(mappedAtomIndexSSC2) && (mappedAtomIndices.get(mappedAtomIndexSSC2) != -1)) {
-//                            if (mappedAtomIndices.get(mappedAtomIndexSSC2) != mappedAtomIndexSSC1) {
-//                                System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC1 more than one time!!! -> "
-//                                        + mappedAtomIndexSSC2 + " : " + mappedAtomIndices.get(mappedAtomIndexSSC2) + " vs. " + mappedAtomIndexSSC1);
-//                            }
-                            continue;
-                        }
-                        if (mappedAtomIndices.containsValue(mappedAtomIndexSSC1)) {
-//                            System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC2 more than one time!!! -> "
-//                                    + mappedAtomIndexSSC2 + " : " + mappedAtomIndexSSC1);
-                            continue;
-                        }
-//                        System.out.println(" in s: " + s + " -> new map: " + mappedAtomIndexSSC2 + ", " + mappedAtomIndexSSC1);
-                        mappedAtomIndices.put(mappedAtomIndexSSC2, mappedAtomIndexSSC1);
-                    }
-                }
-                // add mappings of all atoms between SSC1 and SSC2 which have to be assigned to each other (not structurally identical)
-                for (int s = m + 1; s <= Integer.min(ssc2.getConnectionTree(overlapAtomIndexSSC2).getMaxSphere(), ssc1.getConnectionTree(overlapAtomIndexSSC1).getMaxSphere()); s++) {
-                    mappedEqualNodesKeys = Assembly.mapEqualNodesInSphere(ssc2, ssc1, overlapAtomIndexSSC2, overlapAtomIndexSSC1, s, shiftTol);
-//                    System.out.println(" -> in s: " + s + " -> mapped equal node:  " + mappedEqualNodesKeys);
-                    for (final Map.Entry<Integer, Integer> entry : mappedEqualNodesKeys.entrySet()) {
-                        mappedAtomIndexSSC2 = entry.getKey();
-                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
-                            continue;
-                        }
-                        mappedAtomIndexSSC1 = entry.getValue();
-                        if (mappedAtomIndexSSC1 == -1) {
-                            continue;
-                        }
-                        if (mappedAtomIndices.containsKey(mappedAtomIndexSSC2) && (mappedAtomIndices.get(mappedAtomIndexSSC2) != -1)) {
-//                            if (mappedAtomIndices.get(mappedAtomIndexSSC2) != mappedAtomIndexSSC1) {
-//                                System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC1 more than one time!!! -> "
-//                                        + mappedAtomIndexSSC2 + " : " + mappedAtomIndices.get(mappedAtomIndexSSC2) + " vs. " + mappedAtomIndexSSC1);
-//                            }
-                            continue;
-                        }
-                        if (mappedAtomIndices.containsValue(mappedAtomIndexSSC1)) {
-//                            System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC2 more than one time!!! -> "
-//                                    + mappedAtomIndexSSC2 + " : " + mappedAtomIndexSSC1);
-                            continue;
-                        }
-//                        System.out.println(" in s: " + s + " -> new map: " + mappedAtomIndexSSC2 + ", " + mappedAtomIndexSSC1);
-                        mappedAtomIndices.put(mappedAtomIndexSSC2, mappedAtomIndexSSC1);
-                    }
-                }
-            }
-            System.out.println(" -> mapped atom indices after m: " + m + ":\t" + mappedAtomIndices);
-            if (!mappedAtomIndices.isEmpty()) {
-                System.out.println(" -> not empty");
-                break;
-            }
-        }
-        
-        return mappedAtomIndices;
-    }
     
     private static ArrayList<Object> extendSSC(final SSC ssc1, final SSC ssc2, final HashMap<Integer, Integer> mappedAtomIndices, final double pickPrecision) throws CDKException, CloneNotSupportedException{
         int mappedAtomIndexSSC1, mappedAtomIndexSSC2, equivalentSignalIndex;
@@ -1113,5 +588,144 @@ public class Assembly {
         toReturn.add(mappedAtomIndices2);
         return toReturn;
     }    
+
+    /**
+     * Returns pairwise atom indices of two structural overlapping atoms in both
+     * substructures, including the maximum matching sphere counts as keys.
+     *
+     * @param ssc1 first SSC
+     * @param ssc2 second SSC
+     * @param shiftTol
+     * @param minSphereMatchCount number of minimum matching spheres
+     * @param atomType
+     * @return pairs of atom indices; first in SSC1, second in SSC2
+     * @throws java.lang.CloneNotSupportedException
+     */
+    public static HashMap<Integer, ArrayList<Integer[]>> getStructuralOverlaps(final SSC ssc1, final SSC ssc2, final double shiftTol, final int minSphereMatchCount, final String atomType) throws CloneNotSupportedException {
+        final HashMap<Integer, ArrayList<Integer[]>> overlaps = new HashMap<>();
+        int maxMatchingSphere;
+        for (int i = 0; i < ssc1.getAtomCount(); i++) {
+            if (!ssc1.getSubstructure().getAtom(i).getSymbol().equals(atomType)) {
+                continue;
+            }
+            for (int j = 0; j < ssc2.getAtomCount(); j++) {
+                if (!ssc2.getSubstructure().getAtom(j).getSymbol().equals(atomType)) {
+                    continue;
+                }
+                maxMatchingSphere = -1;
+                if (Match.isEqualNode(ssc1.getConnectionTree(i).getRootNode(), ssc2.getConnectionTree(j).getRootNode(), 
+                        ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, i)), 
+                        ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, j)), shiftTol)) {
+//                    maxMatchingSphere = Assembly.getMaximumMatchingSphereHOSECode(ssc1.getHOSECode(i), ssc2.getHOSECode(j));
+                    maxMatchingSphere = Match.getMaximumMatchingSphere(ssc1, ssc2, i, j, shiftTol);
+                    System.out.println("i: " + i + ", " + j + ": " + maxMatchingSphere);
+                }
+                if (maxMatchingSphere >= minSphereMatchCount) {
+                    // && (maxMatchingSphere <= maxSphereMatchCount)) {
+                    if (!overlaps.containsKey(maxMatchingSphere)) {
+                        overlaps.put(maxMatchingSphere, new ArrayList<>());
+                    }
+                    overlaps.get(maxMatchingSphere).add(new Integer[]{i, j});
+                }
+            }
+        }
+        return overlaps;
+    }
+
+    public static HashMap<Integer, Integer> mapStructuralOverlaps(final SSC ssc1, final SSC ssc2, final HashMap<Integer, ArrayList<Integer[]>> overlaps, final double shiftTol) throws CDKException, CloneNotSupportedException {
+        final HashMap<Integer, Integer> mappedAtomIndices = new HashMap<>();
+        HashMap<Integer, Integer> mappedEqualNodesKeys;
+        int overlapAtomIndexSSC1;
+        int overlapAtomIndexSSC2;
+        int mappedAtomIndexSSC1;
+        int mappedAtomIndexSSC2;
+        boolean containsUnsaturatedAtomsSSC1;
+        for (int m = Collections.max(overlaps.keySet()); m >= Collections.min(overlaps.keySet()); m--) {
+            if (!overlaps.containsKey(m)) {
+                continue;
+            }
+            System.out.println("\n -> m: " + m);
+            for (final Integer[] overlap : overlaps.get(m)) {
+                overlapAtomIndexSSC2 = overlap[0];
+                overlapAtomIndexSSC1 = overlap[1];
+                System.out.println("\n--> overlap: " + overlapAtomIndexSSC2 + ", " + overlapAtomIndexSSC1);
+                System.out.println("HOSE code ssc1:\t" + HOSECodeBuilder.buildHOSECode(ssc1.getConnectionTree(overlapAtomIndexSSC1), false));
+                System.out.println("HOSE code ssc2:\t" + HOSECodeBuilder.buildHOSECode(ssc2.getConnectionTree(overlapAtomIndexSSC2), false));
+                containsUnsaturatedAtomsSSC1 = false;
+                for (final int nodeKey : ssc1.getConnectionTree(overlapAtomIndexSSC1).getKeysInOrder(true)) {
+                    if (ssc1.isUnsaturated(nodeKey)) {
+                        containsUnsaturatedAtomsSSC1 = true;
+                        break;
+                    }
+                }
+                if (!containsUnsaturatedAtomsSSC1) {
+                    System.out.println("\nnothing unsaturated -> skip this overlap");
+                    continue;
+                }
+                // add mappings of all atoms between SSC1 and SSC2 which have an identical structural overlap
+                for (int s = 0; s <= m; s++) {
+                    for (int i = 0; i < ssc2.getConnectionTree(overlapAtomIndexSSC2).getNodesCountInSphere(s); i++) {
+                        mappedAtomIndexSSC2 = ssc2.getConnectionTree(overlapAtomIndexSSC2).getNodeKeysInSphere(s).get(i);
+                        mappedAtomIndexSSC1 = ssc1.getConnectionTree(overlapAtomIndexSSC1).getNodeKeysInSphere(s).get(i);
+                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
+                            continue;
+                        }
+                        if (mappedAtomIndexSSC1 == -1) {
+                            continue;
+                        }
+                        if (mappedAtomIndices.containsKey(mappedAtomIndexSSC2) && (mappedAtomIndices.get(mappedAtomIndexSSC2) != -1)) {
+                            //                            if (mappedAtomIndices.get(mappedAtomIndexSSC2) != mappedAtomIndexSSC1) {
+                            //                                System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC1 more than one time!!! -> "
+                            //                                        + mappedAtomIndexSSC2 + " : " + mappedAtomIndices.get(mappedAtomIndexSSC2) + " vs. " + mappedAtomIndexSSC1);
+                            //                            }
+                            continue;
+                        }
+                        if (mappedAtomIndices.containsValue(mappedAtomIndexSSC1)) {
+                            //                            System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC2 more than one time!!! -> "
+                            //                                    + mappedAtomIndexSSC2 + " : " + mappedAtomIndexSSC1);
+                            continue;
+                        }
+                        //                        System.out.println(" in s: " + s + " -> new map: " + mappedAtomIndexSSC2 + ", " + mappedAtomIndexSSC1);
+                        mappedAtomIndices.put(mappedAtomIndexSSC2, mappedAtomIndexSSC1);
+                    }
+                }
+                // add mappings of all atoms between SSC1 and SSC2 which have to be assigned to each other (not structurally identical)
+                for (int s = m + 1; s <= Integer.min(ssc2.getConnectionTree(overlapAtomIndexSSC2).getMaxSphere(), ssc1.getConnectionTree(overlapAtomIndexSSC1).getMaxSphere()); s++) {
+                    mappedEqualNodesKeys = Match.mapEqualNodesInSphere(ssc2, ssc1, overlapAtomIndexSSC2, overlapAtomIndexSSC1, s, shiftTol);
+                    //                    System.out.println(" -> in s: " + s + " -> mapped equal node:  " + mappedEqualNodesKeys);
+                    for (final Map.Entry<Integer, Integer> entry : mappedEqualNodesKeys.entrySet()) {
+                        mappedAtomIndexSSC2 = entry.getKey();
+                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
+                            continue;
+                        }
+                        mappedAtomIndexSSC1 = entry.getValue();
+                        if (mappedAtomIndexSSC1 == -1) {
+                            continue;
+                        }
+                        if (mappedAtomIndices.containsKey(mappedAtomIndexSSC2) && (mappedAtomIndices.get(mappedAtomIndexSSC2) != -1)) {
+                            //                            if (mappedAtomIndices.get(mappedAtomIndexSSC2) != mappedAtomIndexSSC1) {
+                            //                                System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC1 more than one time!!! -> "
+                            //                                        + mappedAtomIndexSSC2 + " : " + mappedAtomIndices.get(mappedAtomIndexSSC2) + " vs. " + mappedAtomIndexSSC1);
+                            //                            }
+                            continue;
+                        }
+                        if (mappedAtomIndices.containsValue(mappedAtomIndexSSC1)) {
+                            //                            System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC2 more than one time!!! -> "
+                            //                                    + mappedAtomIndexSSC2 + " : " + mappedAtomIndexSSC1);
+                            continue;
+                        }
+                        //                        System.out.println(" in s: " + s + " -> new map: " + mappedAtomIndexSSC2 + ", " + mappedAtomIndexSSC1);
+                        mappedAtomIndices.put(mappedAtomIndexSSC2, mappedAtomIndexSSC1);
+                    }
+                }
+            }
+            System.out.println(" -> mapped atom indices after m: " + m + ":\t" + mappedAtomIndices);
+            if (!mappedAtomIndices.isEmpty()) {
+                System.out.println(" -> not empty");
+                break;
+            }
+        }
+        return mappedAtomIndices;
+    }
     
 }
