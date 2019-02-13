@@ -30,6 +30,7 @@ import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
@@ -112,9 +113,9 @@ public final class SSC {
     public void update() throws CDKException {
         AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(this.substructure);
         this.updateAtomTypeIndices();        
-        this.updateUnsaturatedAtomIndices();        
-//        this.updatePresenceMultiplicities();  
+        this.updateUnsaturatedAtomIndices();                 
         this.updateHOSECodes();
+        this.updatePresenceMultiplicities(); 
     }
     
     @Override
@@ -197,7 +198,8 @@ public final class SSC {
      * @throws org.openscience.cdk.exception.CDKException
      */
     public void updatePresenceMultiplicities() throws CDKException {
-        final String[] mults = new String[]{"S", "D", "T", "Q"};   
+        final HashSet<String> mults = new HashSet<>(); //{"S", "D", "T", "Q"}
+        mults.add("S"); mults.add("D"); mults.add("T"); mults.add("Q"); 
         // init
         for (final String mult : mults) {            
             this.presenceMultiplicities.put(mult, new HashMap<>());
@@ -207,8 +209,11 @@ public final class SSC {
         int shift;
         for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
             signal = this.subspectrum.getSignal(i);
-            if((signal.getShift(0) == null) || (signal.getMultiplicity() == null)){
-                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": signal shift or multiplicity is missing");
+            if((signal == null)|| (signal.getShift(0) == null) 
+                    || (signal.getMultiplicity() == null) 
+                    || (signal.getIntensity() == null)
+                    || (!mults.contains(signal.getMultiplicity()))){
+                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": signal, shift or multiplicity is missing");
             }
             shift = signal.getShift(0).intValue();
             if(!this.presenceMultiplicities.get(signal.getMultiplicity()).containsKey(shift)){
