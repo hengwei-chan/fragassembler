@@ -1,6 +1,6 @@
 
 -   consider intensities in all match steps
--   set aromaticities in each SSC sustructure too? (information is lost after building of fragment?!?)
+-   set aromaticities in each SSC sustructure too? -> information is lost after building of fragment
 -   check for multiple assignments/symmetry in Assembly class (findMatches() 
 -   add exceptions where needed
 -   deep cloning of SSC class (and used objects within that)
