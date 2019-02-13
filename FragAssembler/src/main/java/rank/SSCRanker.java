@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import match.Match;
 import model.SSC;
 import model.SSCLibrary;
 
@@ -197,7 +198,7 @@ public final class SSCRanker {
         for (final SSC ssc : this.sscLibrary.getSSCs()) {
             callables.add((Callable<HashMap<Integer, Assignment>>) () -> {
                 final HashMap<Integer, Assignment> tempHashMap = new HashMap<>();
-                tempHashMap.put(ssc.getIndex(), Assembly.matchSpectra(ssc.getSubspectrum(), querySpectrum, pickPrecision));
+                tempHashMap.put(ssc.getIndex(), Match.matchSpectra(ssc.getSubspectrum(), querySpectrum, pickPrecision));
                 return tempHashMap;
             });
         }
@@ -229,7 +230,7 @@ public final class SSCRanker {
         for (final SSC ssc : this.sscLibrary.getSSCs()) {
             callables.add((Callable<HashMap<Integer, Double>>) () -> {
                 final HashMap<Integer, Double> tempHashMap = new HashMap<>();                
-                tempHashMap.put(ssc.getIndex(), Assembly.getMatchFactor(ssc.getSubspectrum(), querySpectrum, pickPrecision));
+                tempHashMap.put(ssc.getIndex(), Match.getMatchFactor(ssc.getSubspectrum(), querySpectrum, pickPrecision));
                 return tempHashMap;
             });
         }
@@ -263,18 +264,25 @@ public final class SSCRanker {
         Collections.sort(this.rankedSSCIndices, new Comparator<Integer>() {
             @Override
             public int compare(final Integer indexSSC1, final Integer indexSSC2) {          
+                // ranking by number of overlapping signals
+                final int setAssignmentsCountComp = -1 * Integer.compare(
+                        matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
+                        matchAssignments.get(indexSSC2).getSetAssignmentsCount(0));
+                if (setAssignmentsCountComp != 0) {
+                    return setAssignmentsCountComp;
+                }
                 // ranking by match factor 
                 final int matchFactorComp = Double.compare(matchFactors.get(indexSSC1), matchFactors.get(indexSSC2));
                 if(matchFactorComp != 0){
                     return matchFactorComp;
                 }                 
-                // ranking by number of overlapping signals
-                final int setAssignmentsCountComp = -1 * Integer.compare(
-                        matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
-                        matchAssignments.get(indexSSC2).getSetAssignmentsCount(0));
-                if(setAssignmentsCountComp != 0){
-                    return setAssignmentsCountComp; 
-                }               
+//                // ranking by number of overlapping signals
+//                final int setAssignmentsCountComp = -1 * Integer.compare(
+//                        matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
+//                        matchAssignments.get(indexSSC2).getSetAssignmentsCount(0));
+//                if(setAssignmentsCountComp != 0){
+//                    return setAssignmentsCountComp; 
+//                }               
                 // ranking by total subtructure size
                 final int substructureSizeComp = -1 * Integer.compare(
                         sscLibrary.getSSC(indexSSC1).getAtomCount(), 
