@@ -68,7 +68,7 @@ public class HOSECodeBuilder {
     /**
      * Splits a HOSE code sphere into its positions. Each position includes all
      * its elements.
-     * Example: HOSE code sphere: /CC,*N&,C/ results in: {0: [C,C], 1: [*N&], 2: [C]}
+     * Example: {@code /CC,*N&,C/} results in: {@code {0: [C,C], 1: [*N,&], 2: [C]}}
      *
      * @param HOSECodeSphere  HOSE code sphere
      * @return HashMap of ArrayLists containing elements for each position of that HOSE code sphere
