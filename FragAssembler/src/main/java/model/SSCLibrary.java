@@ -27,13 +27,10 @@ import casekit.NMR.DB;
 import casekit.NMR.Utils;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonWriter;
-import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
 import com.mongodb.util.JSON;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -48,11 +45,6 @@ import java.util.HashSet;
 import org.openscience.cdk.exception.CDKException;
 import fragmentation.Fragmentation;
 import java.util.Collections;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -158,6 +150,7 @@ public final class SSCLibrary {
 //                    System.out.println("Document inserted successfully");
             } catch (Exception e) {
                 System.err.println("export for key \"" + ssc.getIndex() + "\" failed: " + e.getMessage());
+                System.out.println("-> document: \n" + document.toJson());
             }
         }
     }
@@ -259,7 +252,8 @@ public final class SSCLibrary {
      * @throws CloneNotSupportedException
      * @throws java.lang.InterruptedException
      * 
-     * @see Fragmentation#buildSSCLibrary(java.util.HashMap, int, int, int) 
+     * @see #removeAll() 
+     * @see #extend(java.lang.String, java.lang.String, java.lang.String, int, int)  
      */
     public void importFromNMRShiftDB(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final int offset) throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException {
         this.removeAll();
@@ -352,7 +346,9 @@ public final class SSCLibrary {
      * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.InterruptedException
      * @throws java.lang.CloneNotSupportedException
-     * @see #containsSSC(int)
+     * 
+     * @see Fragmentation#buildSSCLibrary(java.util.HashMap, int, int, int)  
+     * @see #containsSSC(int) 
      */
     public void extend(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final int offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
         final HashMap<Integer, Object[]> SSCComponentsSet = DB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property, atomType);
