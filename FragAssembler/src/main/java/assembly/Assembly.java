@@ -31,10 +31,8 @@ import casekit.NMR.model.Spectrum;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -44,17 +42,15 @@ import match.Match;
 import model.ConnectionTree;
 import model.ConnectionTreeNode;
 import model.SSC;
+import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
-import org.openscience.cdk.isomorphism.UniversalIsomorphismTester;
-import org.openscience.cdk.isomorphism.mcss.RMap;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
 import org.openscience.cdk.smiles.SmilesParser;
-import rank.SSCRanker;
 
 /**
  *
@@ -192,7 +188,7 @@ public class Assembly {
     }    
         
     
-    public static HashMap<String, SSC> assemble(final int nStartSSCs, final int nThreads, final SSCRanker sscRanker, final int minMatchingSphereCount, 
+    public static HashMap<String, SSC> assemble(final int nStartSSCs, final int nThreads, final SSCLibrary rankedSSCLibrary, final int minMatchingSphereCount, 
             final Spectrum querySpectrum, final double shiftTol, final double thrsMatchFactor, final double pickPrecision) throws InterruptedException{
         final HashMap<String, SSC> solutions = new HashMap<>();
         // initialize an executor for parallelization
@@ -202,7 +198,7 @@ public class Assembly {
         for (int i = 0; i < nStartSSCs; i++) {
             final int j = i;
             callables.add((Callable<HashMap<String, SSC>>) () -> {                                
-                return Assembly.assemble(sscRanker, j, minMatchingSphereCount, querySpectrum, shiftTol, thrsMatchFactor, pickPrecision);
+                return Assembly.assemble(rankedSSCLibrary, j, minMatchingSphereCount, querySpectrum, shiftTol, thrsMatchFactor, pickPrecision);
             });
         }
         // execute all task in parallel
@@ -224,18 +220,17 @@ public class Assembly {
         return solutions;
     } 
     
-    public static HashMap<String, SSC> assemble(final SSCRanker sscRanker, final int startSSCIndex, final int minMatchingSphereCount, 
+    public static HashMap<String, SSC> assemble(final SSCLibrary rankedSSCLibrary, final int startSSCIndex, final int minMatchingSphereCount, 
             final Spectrum querySpectrum, final double shiftTol, final double thrsMatchFactor, final double pickPrecision) throws CloneNotSupportedException, CDKException, IOException {
         
         final SmilesGenerator smilesGenerator = new SmilesGenerator(SmiFlavor.Absolute);
         final SmilesParser smilesParser = new SmilesParser(new SilentChemObjectBuilder());
         String structureAsSMILES;
         final HashMap<String, SSC> solutions = new HashMap<>();
-        final ArrayList<Integer> rankedSSCIndices = sscRanker.getRankedSSCIndices();
         SSC ssc2, ssc1Backup;
         ArrayList<Object> resultSSCExtension;
-        // copy(!!!) the SSC1 contents only; don't use the object (reference) itself because of modifications
-        SSC ssc1 = sscRanker.getSSCLibrary().getSSC(rankedSSCIndices.get(startSSCIndex)).getClone();
+        // clone (!!!) the SSC1 contents only; don't use the object (reference) itself because of modifications
+        SSC ssc1 = rankedSSCLibrary.getSSC(startSSCIndex).getClone();
         
         int maxMatchingSphere, mappedAtomIndexSSC1, mappedAtomIndexSSC2;
         Signal signalToRemoveSSC2;
@@ -254,16 +249,15 @@ public class Assembly {
             System.out.println("-> equivalences:\t" + querySpectrum.getEquivalences());
             System.out.println("-> pred. spectrum:\t" + ssc1.getSubspectrum().getShifts(0));
             System.out.println("-> equivalences:\t" + ssc1.getSubspectrum().getEquivalences());
-            Utils.generatePicture(smilesParser.parseSmiles(structureAsSMILES), "/Users/mwenk/Downloads/outputs/out_final_" + structureAsSMILES + ".png");
             return solutions;
         }
         
         
-        for (int ssc2Index = 0; ssc2Index < rankedSSCIndices.size(); ssc2Index++) {
+        for (final int ssc2Index : rankedSSCLibrary.getSSCIndices()) {
             if (ssc2Index == startSSCIndex) {
                 continue;
             }
-            ssc2 = sscRanker.getSSCLibrary().getSSC(rankedSSCIndices.get(ssc2Index));
+            ssc2 = rankedSSCLibrary.getSSC(ssc2Index);
 
             System.out.println("\n\n-------------------------------- " + startSSCIndex + ", " + ssc2Index + " --------------------------------");
 
@@ -396,7 +390,7 @@ public class Assembly {
             }
             
             
-            Utils.generatePicture(smilesParser.parseSmiles(smilesGenerator.create(ssc1.getSubstructure())), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
+//            Utils.generatePicture(smilesParser.parseSmiles(smilesGenerator.create(ssc1.getSubstructure())), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
 //            Utils.generatePicture(ssc1.getSubstructure(), "/Users/mwenk/Downloads/outputs/temp_" + startSSCIndex + "_" + ssc2Index + ".png");
             
             if(Assembly.isFinalSSC(ssc1, querySpectrum)){
@@ -409,7 +403,6 @@ public class Assembly {
                     System.out.println("-> equivalences:\t" + querySpectrum.getEquivalences());
                     System.out.println("-> pred. spectrum:\t" + ssc1.getSubspectrum().getShifts(0));
                     System.out.println("-> equivalences:\t" + ssc1.getSubspectrum().getEquivalences());
-                    Utils.generatePicture(smilesParser.parseSmiles(structureAsSMILES), "/Users/mwenk/Downloads/outputs/out_final_" + structureAsSMILES + ".png");
                 }
                 break;
             }
@@ -449,7 +442,6 @@ public class Assembly {
                                 System.out.println("-> equivalences:\t" + querySpectrum.getEquivalences());
                                 System.out.println("-> pred. spectrum:\t" + ssc1.getSubspectrum().getShifts(0));
                                 System.out.println("-> equivalences:\t" + ssc1.getSubspectrum().getEquivalences());
-                                Utils.generatePicture(smilesParser.parseSmiles(structureAsSMILES), "/Users/mwenk/Downloads/outputs/out_final_" + structureAsSMILES + ".png");
                             }
                             break;
                         }
