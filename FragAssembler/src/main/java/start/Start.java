@@ -35,6 +35,7 @@ import com.mongodb.MongoCredential;
 import com.mongodb.ServerAddress;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Filters;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
@@ -67,9 +68,9 @@ import rank.SSCRanker;
  */
 public class Start {  
     
-    private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueryFile;
+    private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueryFile, pathToOutputsFolder;
     private int nThreads, nStarts, maxSphere;
-    private boolean importFromNMRShiftDB;
+    private boolean importFromNMRShiftDB, extendFromNMRShiftDB;
     private SSCLibrary sscLibrary;   
     private SSCRanker sscRanker;
     
@@ -80,6 +81,7 @@ public class Start {
             CommandLine cmd = parser.parse(options, args);
             if(cmd.hasOption("import")){
                 this.importFromNMRShiftDB = true;
+                this.extendFromNMRShiftDB = false;
                 if(!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")){
                     this.pathToNMRShiftDB = "";
                     this.maxSphere = -1;
@@ -88,22 +90,29 @@ public class Start {
                     this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));                
                 }
                 
+            } else if(cmd.hasOption("extend")){
+                this.importFromNMRShiftDB = false;
+                this.extendFromNMRShiftDB = true;
+                if(!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")){
+                    this.pathToNMRShiftDB = "";
+                    this.maxSphere = -1;
+                } else {
+                    this.pathToNMRShiftDB = cmd.getOptionValue("nmrshiftdb");
+                    this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));                
+                }
             } else {
                 this.importFromNMRShiftDB = false;
+                this.extendFromNMRShiftDB = false;
             }     
-            this.nThreads = Integer.parseInt(cmd.getOptionValue("nthreads"));
-            if(cmd.hasOption("nstarts")){
-                this.nStarts = Integer.parseInt(cmd.getOptionValue("nstarts"));
-            } else {
-                this.nStarts = -1;
-            }
-            
+            this.nThreads = Integer.parseInt(cmd.getOptionValue("nthreads"));            
+            this.nStarts = Integer.parseInt(cmd.getOptionValue("nstarts", "-1"));                        
             this.mongoUser = cmd.getOptionValue("user");
             this.mongoPassword = cmd.getOptionValue("password");
             this.mongoAuthDB = cmd.getOptionValue("authDB");
             this.mongoDBName = cmd.getOptionValue("database");
             this.mongoDBCollection = cmd.getOptionValue("collection");
             this.pathToQueryFile = cmd.getOptionValue("query");
+            this.pathToOutputsFolder = cmd.getOptionValue("output", ".");
             
         } catch (org.apache.commons.cli.ParseException e) {
             // TODO Auto-generated catch block
@@ -124,6 +133,12 @@ public class Start {
                 .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to overwrite all entries within a MongoDB collection. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
                 .build();
         options.addOption(importFromNMRShiftDBOption);
+        Option extendFromNMRShiftDBOption = Option.builder("e")
+                .required(false)
+                .longOpt("extend")
+                .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to extend a MongoDB collection. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
+                .build();
+        options.addOption(extendFromNMRShiftDBOption);
         Option nmrshiftdb = Option.builder("nmrshiftdb")
                 .required(false)
                 .hasArg()
@@ -133,7 +148,10 @@ public class Start {
         Option maxsphereOption = Option.builder("maxsphere")
                 .required(false)
                 .hasArg()
-                .desc("Maximum sphere limit for SSC creation. Minimum value is 2. SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached.")
+                .desc("Maximum sphere limit for SSC creation. Minimum value is 2."
+                        + "\nIf the \"import\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached."
+                        + "\nIf the \"extend\" option is selected: only SSCs with exactly spherical limit \"maxsphere\" will be created." 
+                        + "\nIf both parameters are given: the \"import\" will be done.")
                 .build();
         options.addOption(maxsphereOption);
 //        Option jsonLibrary = Option.builder("lib")
@@ -199,6 +217,13 @@ public class Start {
                 .desc("Path to a file containing the query spectra in NMRShiftDB format. One spectrum for each line.")
                 .build();
         options.addOption(pathToQueryFileOption);
+        Option pathToOutputsFolderOption = Option.builder("o")
+                .required(false)
+                .hasArg()
+                .longOpt("output")
+                .desc("Path to a output directory for results.")
+                .build();
+        options.addOption(pathToOutputsFolderOption);
         
         
         
@@ -221,6 +246,11 @@ public class Start {
     
     public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {
         
+        this.prepareSSCLibrary();
+        this.processQueries();
+    }
+    
+    private void prepareSSCLibrary() throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException{
         final MongoClient mongo;
         final MongoCollection<Document> collection;
         try {
@@ -237,42 +267,58 @@ public class Start {
             collection = database.getCollection(this.mongoDBCollection);
             System.out.println("Retrieving to collection \"" + this.mongoDBCollection + "\" was successfull");
         } catch (Exception e) {
-            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": could not find database \"" + this.mongoDBName + "\" or collection \"" + this.mongoDBCollection + "\"");
-        }                        
-        
+            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": could not connect to database \"" + this.mongoDBName + "\" or collection \"" + this.mongoDBCollection + "\"");
+        }
+
         this.sscLibrary = new SSCLibrary(this.nThreads);
-        if(this.importFromNMRShiftDB){   
-            if(this.pathToNMRShiftDB.isEmpty()){
+        if (this.importFromNMRShiftDB) {
+            if (this.pathToNMRShiftDB.isEmpty()) {
                 throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid path to NMRShiftDB file: \"" + this.pathToNMRShiftDB + "\"");
             }
             if (this.maxSphere < 2) {
                 throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\"");
             }
-            
+
             // empty MongoDB collection
             collection.deleteMany(new BasicDBObject());
             System.out.println("Collection \"" + this.mongoDBCollection + "\" is now empty");
-            
+
             int offset = 0;
             // create SSC library for a specific max sphere and insert into into the MongoDB collection
             for (int m = 2; m <= this.maxSphere; m++) {
-                System.out.println("Building SSCs for " + m + "-spheres...");                
-                this.sscLibrary.extend(this.pathToNMRShiftDB, "Spectrum 13C 0", "C", m, offset);                
+                System.out.println("Building SSCs for " + m + "-spheres...");
+                this.sscLibrary.extend(this.pathToNMRShiftDB, "Spectrum 13C 0", "C", m, offset);
                 System.out.println("SSCs for " + m + "-spheres build!!!");
                 System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
-                
+
                 offset = Collections.max(sscLibrary.getSSCIndices()) + 1;
-            }    
+            }
             this.sscLibrary.exportToMongoDB(collection);
-            System.out.println("-> SSC library stored into MongoDB in database \"" + this.mongoDBName + "\" in collection \"" + this.mongoDBCollection + "\" -> collection size: " + collection.countDocuments() + "!!!");            
-        } else {            
+            System.out.println("-> SSC library stored into MongoDB in database \"" + this.mongoDBName + "\" in collection \"" + this.mongoDBCollection + "\" -> collection size: " + collection.countDocuments() + "!!!");
+        } else {
             this.sscLibrary.importFromMongoDB(collection);
             System.out.println("-> SSC library imported from MongoDB!!!");
             System.out.println("--> SSC library size:\t" + this.sscLibrary.getSSCCount());
+            if (this.extendFromNMRShiftDB) {
+                if (this.maxSphere < 2) {
+                    throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\"");
+                }
+                // db.data.find({}, {_id: 1}).sort({_id: -1}).limit(1)
+                int offset = Collections.max(sscLibrary.getSSCIndices()) + 1;//((int) collection.find().sort(new BasicDBObject("_id", -1)).limit(1).first().get("_id")) + 1;
+                SSCLibrary sscLibraryTemp = new SSCLibrary(this.nThreads);                
+                System.out.println("offset: " + offset);
+                System.out.println("Building SSCs for " + this.maxSphere + "-spheres...");
+                sscLibraryTemp.extend(this.pathToNMRShiftDB, "Spectrum 13C 0", "C", this.maxSphere, offset);
+                System.out.println("SSCs for " + this.maxSphere + "-spheres build!!!");
+                System.out.println("-> #SSCs in SSC library: " + sscLibraryTemp.getSSCCount());
+                sscLibraryTemp.exportToMongoDB(collection);
+                System.out.println("-> SSC library stored into MongoDB in database \"" + this.mongoDBName + "\" in collection \"" + this.mongoDBCollection + "\" -> collection size: " + collection.countDocuments() + "!!!");
+                this.sscLibrary.extend(sscLibraryTemp);
+                System.out.println("SSCs for " + this.maxSphere + "-spheres added!!!");
+                System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
+            }                        
         }
-        mongo.close();                        
-        
-        this.processQueries();
+        mongo.close();
     }
     
     private void processQueries() throws FileNotFoundException, InterruptedException, IOException, InvalidSmilesException, CDKException, CloneNotSupportedException{
@@ -291,13 +337,15 @@ public class Start {
         ArrayList<Double> shiftsQuerySpectrum, shiftsSolutionSpectrum;
         int querySpectrumCounter = 0;
         
-        System.out.println("\n\n-> processing query file \"" + this.pathToQueryFile + "\" ...");        
+        System.out.println("\n\n-> processing query file: \"" + this.pathToQueryFile + "\" ...");        
         
         Iterator<String> it = br.lines().iterator();
+        String line;
         while (it.hasNext()) {
-            System.out.println("\n\now processing query " + querySpectrumCounter + "\n");
+            line = it.next();
+            System.out.println("\n\nnow processing query: " + querySpectrumCounter + " -> " + line + "\n");
             
-            querySpectrum = DB.NMRShiftDBSpectrumToSpectrum(it.next(), "C");
+            querySpectrum = DB.NMRShiftDBSpectrumToSpectrum(line, "C");
             this.sscRanker.rank(querySpectrum, pickPrecision);
             System.out.println("no. of matches: " + this.sscRanker.getMatchFactors().size());
             System.out.println("match factors: " + this.sscRanker.getMatchFactors());
@@ -314,12 +362,12 @@ public class Start {
             
             solutions = Assembly.assemble(nStartSSCs, nThreads, sscRanker.getRankedSSCLibrary(), minMatchingSphereCount, querySpectrum, shiftTol, thrsMatchFactor, pickPrecision);
             
-            System.out.println("\nsolutions for query " + querySpectrumCounter + ":\t" + solutions.size());
+            System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + line + "):\t" + solutions.size());
             
             shiftsQuerySpectrum = querySpectrum.getShifts(0);
             Collections.sort(shiftsQuerySpectrum);
             
-            bw = new BufferedWriter(new FileWriter("results_" + querySpectrumCounter + ".smiles"));
+            bw = new BufferedWriter(new FileWriter(this.pathToOutputsFolder + "/results_" + querySpectrumCounter + ".smiles"));
             for (final String smiles : solutions.keySet()) {
                 solutionAtomContainer = smilesParser.parseSmiles(smiles);
                 
