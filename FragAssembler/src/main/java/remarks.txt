@@ -1,16 +1,23 @@
+-   general things:
+    -   consider intensities in all match steps
+    -   set aromaticities in each SSC sustructure too? -> information is lost 
+        after building fragments
+    -   check for multiple assignments/symmetry in match.Match class in 
+        matchSpectra() method 
+    -   add exceptions where needed
+    -   deep cloning of SSC class (and used objects within that)
+    -   optimizing the steps for SSC extension?
+    -   consider charges in HOSE code generation/usage
+    -   ConcurrentHashMap instead of HashMap when using parallel mode?
+    -   consider special bond/valency case for N, P and S in assembly step
+    -   some structures in NMRShiftDB include not an assignment for each carbon 
+        atom to a signal, i.e. when equivalent signals in symmetries are 
+        not explicit given -> those structures will be ignored completely for now
 
--   consider intensities in all match steps
--   set aromaticities in each SSC sustructure too? -> information is lost after building of fragment
--   check for multiple assignments/symmetry in Assembly class (findMatches() 
--   add exceptions where needed
--   deep cloning of SSC class (and used objects within that)
--   unique parent assignments in SSC class: updateParentAtomIndicesInHOSECodeSpheres()
--   where to use the open-sphere information
-    -   during SSC extension
-    -   as indicator after SSC entension?
--   optimizing the steps for SSC extension?
+-   how to make it faster:
+    -   usage of connection matrix only instead of IAtomContainer?
+    -   pre-search usage when reading MongoDB collection?
+        - then use only those SSCs as SSC library
+    - generally usage of documents from MongoDB instead of SSC class objects?
 
--   charges in HOSE code generation
--   in predictSpectrum: usage of RMS or median of intensities too?
 
--   ConcurrentHashMap instead of HashMap when using parallel mode?
