@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutorService;
 import match.Match;
 import model.SSC;
 import model.SSCLibrary;
+import org.openscience.cdk.exception.CDKException;
 
 /**
  * Class to search for matches between a SSC library and query spectra.
@@ -114,7 +115,7 @@ public final class SSCRanker {
     /**
      * Returns the match assignments between a query spectrum and SSCs in 
      * SSC library.
-     * To create/update these ranked SSC indices use the rank function.
+     * To create/update these match assignments use the rank function.
      *
      * @return 
      *  
@@ -126,7 +127,7 @@ public final class SSCRanker {
     
     /**
      * Returns the match factors of SSCs in SSC library.
-     * To create/update these ranked SSC indices use the rank function.
+     * To create/update these match factors use the rank function.
      *
      * @return
      *  
@@ -138,7 +139,7 @@ public final class SSCRanker {
     
     /**
      * Returns the ascending sorted match factors of SSCs in SSC library.
-     * To create/update these ranked SSC indices use the rank function.
+     * To create/update these ranked match factors use the rank function.
      *
      * @return
      * 
@@ -164,13 +165,34 @@ public final class SSCRanker {
     public ArrayList<Integer> getRankedSSCIndices(){
         return this.rankedSSCIndices;
     }
+    
+    /**
+     * Returns a SSC library containing matched SSC clones in ascending order.
+     * To create/update these ranked SSC indices use the rank function.
+     *
+     * @return
+     * @throws org.openscience.cdk.exception.CDKException
+     * @throws java.lang.CloneNotSupportedException
+     * 
+     * @see #rank(casekit.NMR.model.Spectrum, double) 
+     */
+    public SSCLibrary getRankedSSCLibrary() throws CDKException, CloneNotSupportedException{
+        final SSCLibrary rankedSSCLibrary = new SSCLibrary(this.nThreads);
+        SSC rankedSSC;
+        for (final int rankedSSCIndex : this.rankedSSCIndices) {
+            rankedSSC = this.getSSCLibrary().getSSC(rankedSSCIndex).getClone();
+            rankedSSC.setIndex(rankedSSCLibrary.getSSCCount());
+            rankedSSCLibrary.insert(rankedSSC);
+        }
+        
+        return rankedSSCLibrary;
+    }
                     
     /**
      * Ranks the SSCs in SSC library according to their match factor regarding 
      * the query spectrum.     
-     * The results are then available in further class functions, see {@code @see}.
-     * The number of threads to use for this procedure can be set 
-     * beforehand with {@see #setNThreads(int)}.
+     * The results are then available in further class functions, 
+     * see {@code @see}.
      *
      * @param querySpectrum Query spectrum
      * @param pickPrecision Tolerance value [ppm] for shift matching
