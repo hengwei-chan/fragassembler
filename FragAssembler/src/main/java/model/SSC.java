@@ -326,7 +326,7 @@ public final class SSC {
      *
      * @return
      */
-    public Boolean hasUnsaturatedAtoms(){
+    public boolean hasUnsaturatedAtoms(){
         return !this.getUnsaturatedAtomIndices().isEmpty();
     }
     
