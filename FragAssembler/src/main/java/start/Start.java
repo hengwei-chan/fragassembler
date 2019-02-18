@@ -24,28 +24,8 @@ package start;
  * THE SOFTWARE.
  */
 
-import assembly.Assembly;
-import model.SSC;
-import casekit.NMR.DB;
-import casekit.NMR.model.Spectrum;
-import com.mongodb.BasicDBObject;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoCredential;
-import com.mongodb.ServerAddress;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
-import com.mongodb.client.model.Filters;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
 import model.SSCLibrary;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -53,14 +33,8 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
-import org.bson.Document;
 import org.json.simple.parser.ParseException;
 import org.openscience.cdk.exception.CDKException;
-import org.openscience.cdk.exception.InvalidSmilesException;
-import org.openscience.cdk.interfaces.IAtomContainer;
-import org.openscience.cdk.silent.SilentChemObjectBuilder;
-import org.openscience.cdk.smiles.SmilesParser;
-import rank.SSCRanker;
 
 /**
  *
@@ -68,51 +42,84 @@ import rank.SSCRanker;
  */
 public class Start {  
     
-    private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueryFile, pathToOutputsFolder;
+    private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueriesFile, pathToOutputsFolder, pathToJSON, format;
     private int nThreads, nStarts, maxSphere;
-    private boolean importFromNMRShiftDB, extendFromNMRShiftDB;
+    private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON;
     private SSCLibrary sscLibrary;   
-    private SSCRanker sscRanker;
+    private ProcessQueries processQueries;
+    public static final String SPECTRUM_PROPERTY = "Spectrum 13C 0";
+    public static final String SPECTRUM_PROPERTY_ATOMTYPE = "C";
+    public static final double PICK_PRECISION = 0.5, MATCH_FACTOR_THRS = 10.0, SHIFT_TOL = 7.0;
+        
     
-    private void parseArgs(String[] args) throws ParseException, org.apache.commons.cli.ParseException {
+    private void parseArgs(String[] args) throws ParseException, org.apache.commons.cli.ParseException, CDKException {
         Options options = setupOptions(args);
         CommandLineParser parser = new DefaultParser();
         try {
             CommandLine cmd = parser.parse(options, args);
-            if(cmd.hasOption("import")){
-                this.importFromNMRShiftDB = true;
-                this.extendFromNMRShiftDB = false;
-                if(!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")){
-                    this.pathToNMRShiftDB = "";
-                    this.maxSphere = -1;
+            this.format = cmd.getOptionValue("format");            
+            switch (this.format) {
+                case "m":
+                    this.useMongoDB = true;
+                    this.useJSON = false;
+                    
+                    this.mongoUser = cmd.getOptionValue("user");
+                    this.mongoPassword = cmd.getOptionValue("password");
+                    this.mongoAuthDB = cmd.getOptionValue("authDB");
+                    this.mongoDBName = cmd.getOptionValue("database");
+                    this.mongoDBCollection = cmd.getOptionValue("collection");
+                    if ((this.mongoUser == null)
+                            || (this.mongoPassword == null)
+                            || (this.mongoAuthDB == null)
+                            || (this.mongoDBName == null)
+                            || (this.mongoDBCollection == null)) {
+                        throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": at least one the parameters \"u\", \"p\", \"a\", \"db\" and \"c\" is missing");
+                    }
+                    break;
+                case "j":
+                    this.useMongoDB = false;
+                    this.useJSON = true;
+                    
+                    this.pathToJSON = cmd.getOptionValue("json");
+                    if (this.pathToJSON == null) {
+                        throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": parameter \"j\" is missing");
+                    }
+                    break;
+                default:
+                    this.useMongoDB = false;
+                    this.useJSON = false;
+                    throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
+            }
+            
+            if(cmd.hasOption("import") || cmd.hasOption("extend")){
+                if (cmd.hasOption("import")) {
+                    this.importFromNMRShiftDB = true;
+                    this.extendFromNMRShiftDB = false;                    
+                } else {//if (cmd.hasOption("extend")) {
+                    this.importFromNMRShiftDB = false;
+                    this.extendFromNMRShiftDB = true;                    
+                }  
+                System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
+                System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB);
+                if (!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")) {
+                    throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": parameter \"nmrshiftdb\" and/or \"maxsphere\" is missing\"");
                 } else {
                     this.pathToNMRShiftDB = cmd.getOptionValue("nmrshiftdb");
-                    this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));                
-                }
-                
-            } else if(cmd.hasOption("extend")){
-                this.importFromNMRShiftDB = false;
-                this.extendFromNMRShiftDB = true;
-                if(!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")){
-                    this.pathToNMRShiftDB = "";
-                    this.maxSphere = -1;
-                } else {
-                    this.pathToNMRShiftDB = cmd.getOptionValue("nmrshiftdb");
-                    this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));                
+                    this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));    
+                    if (this.maxSphere < 2) {
+                        throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\" < 2");
+                    }
                 }
             } else {
                 this.importFromNMRShiftDB = false;
                 this.extendFromNMRShiftDB = false;
             }     
-            this.nThreads = Integer.parseInt(cmd.getOptionValue("nthreads"));            
+            this.nThreads = Integer.parseInt(cmd.getOptionValue("nthreads", "1"));            
             this.nStarts = Integer.parseInt(cmd.getOptionValue("nstarts", "-1"));                        
-            this.mongoUser = cmd.getOptionValue("user");
-            this.mongoPassword = cmd.getOptionValue("password");
-            this.mongoAuthDB = cmd.getOptionValue("authDB");
-            this.mongoDBName = cmd.getOptionValue("database");
-            this.mongoDBCollection = cmd.getOptionValue("collection");
-            this.pathToQueryFile = cmd.getOptionValue("query");
+            
+            this.pathToQueriesFile = cmd.getOptionValue("query");
             this.pathToOutputsFolder = cmd.getOptionValue("output", ".");
+            this.pathToJSON = cmd.getOptionValue("json");
             
         } catch (org.apache.commons.cli.ParseException e) {
             // TODO Auto-generated catch block
@@ -127,16 +134,51 @@ public class Start {
 
     private Options setupOptions(String[] args) {
         Options options = new Options();
-        Option importFromNMRShiftDBOption = Option.builder("i")
+        Option dbFormatOption = Option.builder("f")
+                .required(true)
+                .hasArg()
+                .longOpt("format")
+                .desc("Format to use: " 
+                        + "\ncase 1: \"j\" for JSON. The parameter \"j\" has to be set." 
+                        + "\ncase 2: \"m\" for MongoDB. The parameters \"u\", \"p\", \"a\", \"db\" and \"c\" have to be set.")
+                .build();
+        options.addOption(dbFormatOption);
+        Option pathToQueryFileOption = Option.builder("q")
+                .required(true)
+                .hasArg()
+                .longOpt("query")
+                .desc("Path to a file containing the query spectra in NMRShiftDB format. One spectrum for each line.")
+                .build();
+        options.addOption(pathToQueryFileOption);
+        Option pathToOutputsFolderOption = Option.builder("o")
                 .required(false)
-                .longOpt("import")
-                .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to overwrite all entries within a MongoDB collection. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
+                .hasArg()
+                .longOpt("output")
+                .desc("Path to a output directory for results. The default is set to \".\".")
+                .build();
+        options.addOption(pathToOutputsFolderOption);
+        Option nthreadsOption = Option.builder("nt")
+                .required(false)
+                .hasArg()
+                .longOpt("nthreads")
+                .desc("Number of threads to use for parallelization. The default is set to 1.")
+                .build();
+        options.addOption(nthreadsOption); 
+        Option nstartsOption = Option.builder("ns")
+                .required(false)
+                .hasArg()
+                .longOpt("nstarts")
+                .desc("Specified number of ranked SSCs to use for assembly process. The default is set to use all matched SSC given a query spectrum.")
+                .build();
+        options.addOption(nstartsOption);
+        Option importFromNMRShiftDBOption = Option.builder("import")
+                .required(false)
+                .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to overwrite all entries within a MongoDB collection or JSON file. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
                 .build();
         options.addOption(importFromNMRShiftDBOption);
-        Option extendFromNMRShiftDBOption = Option.builder("e")
+        Option extendFromNMRShiftDBOption = Option.builder("extend")
                 .required(false)
-                .longOpt("extend")
-                .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to extend a MongoDB collection. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
+                .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to extend a MongoDB collection or JSON file. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
                 .build();
         options.addOption(extendFromNMRShiftDBOption);
         Option nmrshiftdb = Option.builder("nmrshiftdb")
@@ -154,77 +196,48 @@ public class Start {
                         + "\nIf both parameters are given: the \"import\" will be done.")
                 .build();
         options.addOption(maxsphereOption);
-//        Option jsonLibrary = Option.builder("lib")
-//                .required(true)
-//                .hasArg()
-//                .longOpt("library")
-//                .desc("path to SSC Library as JSON file (required)")
-//                .build();
-//        options.addOption(jsonLibrary); 
-        Option nthreadsOption = Option.builder("nt")
-                .required(true)
-                .hasArg()
-                .longOpt("nthreads")
-                .desc("Number of threads to use for parallelization.")
-                .build();
-        options.addOption(nthreadsOption); 
-        Option nstartsOption = Option.builder("ns")
-                .required(false)
-                .hasArg()
-                .longOpt("nstarts")
-                .desc("Specified number of ranked SSCs to use for assembly process. The default is to use all matched SSC given a query spectrum.")
-                .build();
-        options.addOption(nstartsOption);
         Option mongoUserOption = Option.builder("u")
-                .required(true)
+                .required(false)
                 .hasArg()
                 .longOpt("user")
                 .desc("User name to use for login into MongoDB.")
                 .build();
         options.addOption(mongoUserOption); 
         Option mongoPasswordOption = Option.builder("p")
-                .required(true)
+                .required(false)
                 .hasArg()
                 .longOpt("password")
                 .desc("User password to use for login into MongoDB.")
                 .build();
         options.addOption(mongoPasswordOption);
         Option mongoAuthDBOption = Option.builder("a")
-                .required(true)
+                .required(false)
                 .hasArg()
                 .longOpt("authDB")
                 .desc("Authentication database name to use for login into MongoDB.")
                 .build();
         options.addOption(mongoAuthDBOption);
         Option mongoDatabaseNameOption = Option.builder("db")
-                .required(true)
+                .required(false)
                 .hasArg()
                 .longOpt("database")
                 .desc("Database name to use for operations in MongoDB.")
                 .build();
         options.addOption(mongoDatabaseNameOption);
         Option mongoCollectionNameOption = Option.builder("c")
-                .required(true)
-                .hasArg()
-                .longOpt("collection")
-                .desc("Collection name to take from \"database\".")
-                .build();
-        options.addOption(mongoCollectionNameOption);
-        Option pathToQueryFileOption = Option.builder("q")
-                .required(true)
-                .hasArg()
-                .longOpt("query")
-                .desc("Path to a file containing the query spectra in NMRShiftDB format. One spectrum for each line.")
-                .build();
-        options.addOption(pathToQueryFileOption);
-        Option pathToOutputsFolderOption = Option.builder("o")
                 .required(false)
                 .hasArg()
-                .longOpt("output")
-                .desc("Path to a output directory for results.")
+                .longOpt("collection")
+                .desc("Collection name to fetch from selected database in MongoDB.")
                 .build();
-        options.addOption(pathToOutputsFolderOption);
-        
+        options.addOption(mongoCollectionNameOption);
+        Option pathToJSONLibraryOption = Option.builder("j")
+                .required(false)
+                .hasArg()
+                .longOpt("json")
+                .desc("Path to SSC library in JSON format.")
+                .build();
+        options.addOption(pathToJSONLibraryOption);
         
         
         return options;
@@ -243,149 +256,19 @@ public class Start {
     }
     
     
-    
     public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {
-        
-        this.prepareSSCLibrary();
-        this.processQueries();
-    }
-    
-    private void prepareSSCLibrary() throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException{
-        final MongoClient mongo;
-        final MongoCollection<Document> collection;
-        try {
-            // Creating a Mongo client             
-            mongo = new MongoClient(new ServerAddress(),
-                    MongoCredential.createCredential(this.mongoUser, this.mongoAuthDB,
-                            this.mongoPassword.toCharArray()),
-                    MongoClientOptions.builder().build());
-            System.out.println("Login to MongoDB was successfull");
-            // Accessing the database 
-            final MongoDatabase database = mongo.getDatabase(this.mongoDBName);
-            System.out.println("Access to database \"" + this.mongoDBName + "\" was successfull");
-            // Retrieving a collection
-            collection = database.getCollection(this.mongoDBCollection);
-            System.out.println("Retrieving to collection \"" + this.mongoDBCollection + "\" was successfull");
-        } catch (Exception e) {
-            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": could not connect to database \"" + this.mongoDBName + "\" or collection \"" + this.mongoDBCollection + "\"");
-        }
-
-        this.sscLibrary = new SSCLibrary(this.nThreads);
-        if (this.importFromNMRShiftDB) {
-            if (this.pathToNMRShiftDB.isEmpty()) {
-                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid path to NMRShiftDB file: \"" + this.pathToNMRShiftDB + "\"");
-            }
-            if (this.maxSphere < 2) {
-                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\"");
-            }
-
-            // empty MongoDB collection
-            collection.deleteMany(new BasicDBObject());
-            System.out.println("Collection \"" + this.mongoDBCollection + "\" is now empty");
-
-            int offset = 0;
-            // create SSC library for a specific max sphere and insert into into the MongoDB collection
-            for (int m = 2; m <= this.maxSphere; m++) {
-                System.out.println("Building SSCs for " + m + "-spheres...");
-                this.sscLibrary.extend(this.pathToNMRShiftDB, "Spectrum 13C 0", "C", m, offset);
-                System.out.println("SSCs for " + m + "-spheres build!!!");
-                System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
-
-                offset = Collections.max(sscLibrary.getSSCIndices()) + 1;
-            }
-            this.sscLibrary.exportToMongoDB(collection);
-            System.out.println("-> SSC library stored into MongoDB in database \"" + this.mongoDBName + "\" in collection \"" + this.mongoDBCollection + "\" -> collection size: " + collection.countDocuments() + "!!!");
+        final PrepareSSCLibrary prepareSSCLibrary = new PrepareSSCLibrary(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
+        if(this.useMongoDB){
+            this.sscLibrary = prepareSSCLibrary.processMongoDB(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
+        } else if(this.useJSON){
+            this.sscLibrary = prepareSSCLibrary.processJSONFile(this.pathToJSON);
         } else {
-            this.sscLibrary.importFromMongoDB(collection);
-            System.out.println("-> SSC library imported from MongoDB!!!");
-            System.out.println("--> SSC library size:\t" + this.sscLibrary.getSSCCount());
-            if (this.extendFromNMRShiftDB) {
-                if (this.maxSphere < 2) {
-                    throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\"");
-                }
-                // db.data.find({}, {_id: 1}).sort({_id: -1}).limit(1)
-                int offset = Collections.max(sscLibrary.getSSCIndices()) + 1;//((int) collection.find().sort(new BasicDBObject("_id", -1)).limit(1).first().get("_id")) + 1;
-                SSCLibrary sscLibraryTemp = new SSCLibrary(this.nThreads);                
-                System.out.println("offset: " + offset);
-                System.out.println("Building SSCs for " + this.maxSphere + "-spheres...");
-                sscLibraryTemp.extend(this.pathToNMRShiftDB, "Spectrum 13C 0", "C", this.maxSphere, offset);
-                System.out.println("SSCs for " + this.maxSphere + "-spheres build!!!");
-                System.out.println("-> #SSCs in SSC library: " + sscLibraryTemp.getSSCCount());
-                sscLibraryTemp.exportToMongoDB(collection);
-                System.out.println("-> SSC library stored into MongoDB in database \"" + this.mongoDBName + "\" in collection \"" + this.mongoDBCollection + "\" -> collection size: " + collection.countDocuments() + "!!!");
-                this.sscLibrary.extend(sscLibraryTemp);
-                System.out.println("SSCs for " + this.maxSphere + "-spheres added!!!");
-                System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
-            }                        
-        }
-        mongo.close();
+            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
+        }            
+        System.gc();
+        this.processQueries = new ProcessQueries(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts);
+        processQueries.process();
     }
     
-    private void processQueries() throws FileNotFoundException, InterruptedException, IOException, InvalidSmilesException, CDKException, CloneNotSupportedException{
-        final SmilesParser smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
-        final BufferedReader br = new BufferedReader(new FileReader(this.pathToQueryFile));
-        BufferedWriter bw;
-        
-        final double shiftTol = 3, thrsMatchFactor = 5, pickPrecision = 0.3;
-        final int minMatchingSphereCount = 0;
-        int nStartSSCs;
-        Spectrum querySpectrum;
-        HashMap<String, SSC> solutions;
-        this.sscRanker = new SSCRanker(this.sscLibrary, this.nThreads);
-        
-        IAtomContainer solutionAtomContainer;
-        ArrayList<Double> shiftsQuerySpectrum, shiftsSolutionSpectrum;
-        int querySpectrumCounter = 0;
-        
-        System.out.println("\n\n-> processing query file: \"" + this.pathToQueryFile + "\" ...");        
-        
-        Iterator<String> it = br.lines().iterator();
-        String line;
-        while (it.hasNext()) {
-            line = it.next();
-            System.out.println("\n\nnow processing query: " + querySpectrumCounter + " -> " + line + "\n");
-            
-            querySpectrum = DB.NMRShiftDBSpectrumToSpectrum(line, "C");
-            this.sscRanker.rank(querySpectrum, pickPrecision);
-            System.out.println("no. of matches: " + this.sscRanker.getMatchFactors().size());
-            System.out.println("match factors: " + this.sscRanker.getMatchFactors());
-            System.out.println("ranked SSC indices: " + this.sscRanker.getRankedSSCIndices());
-            System.out.println("ranked match factors: " + this.sscRanker.getRankedMatchFactors());
-            System.out.println("ranked SSC library indices: " + this.sscRanker.getRankedSSCLibrary().getSSCIndices() + "\n");
-            
-            if((this.nStarts > 0) && (this.nStarts < this.sscRanker.getMatchFactors().size())){
-                nStartSSCs = this.nStarts;
-            } else {
-                nStartSSCs = this.sscRanker.getMatchFactors().size();
-            }
-            System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
-            
-            solutions = Assembly.assemble(nStartSSCs, nThreads, sscRanker.getRankedSSCLibrary(), minMatchingSphereCount, querySpectrum, shiftTol, thrsMatchFactor, pickPrecision);
-            
-            System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + line + "):\t" + solutions.size());
-            
-            shiftsQuerySpectrum = querySpectrum.getShifts(0);
-            Collections.sort(shiftsQuerySpectrum);
-            
-            bw = new BufferedWriter(new FileWriter(this.pathToOutputsFolder + "/results_" + querySpectrumCounter + ".smiles"));
-            for (final String smiles : solutions.keySet()) {
-                solutionAtomContainer = smilesParser.parseSmiles(smiles);
-                
-                shiftsSolutionSpectrum = solutions.get(smiles).getSubspectrum().getShifts(0);
-                Collections.sort(shiftsSolutionSpectrum);
-                System.out.println("query spectrum   :\t" + shiftsQuerySpectrum);
-                System.out.println("solution spectrum:\t" + shiftsSolutionSpectrum);
-                System.out.println("SMILES:          :\t" + smiles);
-                System.out.println("              --> \t" + "atoms: " + solutionAtomContainer.getAtomCount() + ", bonds: " + solutionAtomContainer.getBondCount());
-                
-                bw.append(smiles);
-                bw.newLine();
-                bw.flush();
-            }
-            bw.close();
-            querySpectrumCounter++;
-        }
-        br.close();
-    }
-        
+    
 }
