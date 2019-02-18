@@ -45,6 +45,11 @@ import java.util.HashSet;
 import org.openscience.cdk.exception.CDKException;
 import fragmentation.Fragmentation;
 import java.util.Collections;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
@@ -124,7 +129,7 @@ public final class SSCLibrary {
      * @param nThreads number of threads
      * @return false if {@code nThreads < 1}
      */
-    public boolean setNthreads(final int nThreads){
+    public boolean setNThreads(final int nThreads){
         if(nThreads < 1){
             return false;
         }
@@ -371,55 +376,52 @@ public final class SSCLibrary {
      */
     public void extend(final String pathToJSON, final int offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException{
         final Gson gson = new Gson();
-        SSC ssc;
+//        SSC ssc;
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
         final JsonObject jsonObject = new JsonParser().parse(br).getAsJsonObject();
-        System.out.println("-> parsing done!!! -> #SSCs: " + jsonObject.size());
-        System.out.println("-> now inserting ... ");
-        for (final String sscIndex: jsonObject.keySet()) {
-            ssc = gson.fromJson(jsonObject.get(sscIndex), SSCInJSON.class).toSSC();
-            ssc.setIndex(offset + ssc.getIndex());
-            if(!this.insert(ssc)){
-                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + (offset + ssc.getIndex()) + "(incl. offset: " + offset + ") failed");
-            }
-            System.out.println("-> new size: " + this.getSSCCount());
-        }
-        
-        
-        
-//        // initialize an executor for parallelization
-//        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-//        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
-//        // add all task to do
 //        for (final String sscIndex: jsonObject.keySet()) {
-//            callables.add((Callable<SSC>) () -> {
-//                return gson.fromJson(jsonObject.get(sscIndex), SSCInJSON.class).toSSC();
-//            });
+//            ssc = gson.fromJson(jsonObject.get(sscIndex), SSCInJSON.class).toSSC();
+//            ssc.setIndex(offset + ssc.getIndex());
+//            if(!this.insert(ssc)){
+//                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + (offset + ssc.getIndex()) + "(incl. offset: " + offset + ") failed");
+//            }
 //        }
-//        // execute all task in parallel
-//        executor.invokeAll(callables)
-//                .stream()
-//                .map(future -> {
-//                    try {
-//                        return future.get();
-//                    } catch (InterruptedException | ExecutionException e) {
-//                        throw new IllegalStateException(e);
-//                    }
-//                })
-//                .forEach((ssc) -> {
-//                    if (ssc != null) {
-//                        ssc.setIndex(offset + ssc.getIndex());
-//                        if(!this.insert(ssc)){
-//                            try {
-//                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + (offset + ssc.getIndex()) + "(incl. offset: " + offset + ") failed");
-//                            } catch (CDKException ex) {
-//                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-//                            }
-//                        }                        
-//                    }
-//                });
-//        // shut down the executor service
-//        Utils.stopExecuter(executor, 5);
+        
+        
+        
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
+        // add all task to do
+        for (final String sscIndex: jsonObject.keySet()) {
+            callables.add((Callable<SSC>) () -> {
+                return gson.fromJson(jsonObject.get(sscIndex), SSCInJSON.class).toSSC();
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((ssc) -> {
+                    if (ssc != null) {
+                        ssc.setIndex(offset + ssc.getIndex());
+                        if(!this.insert(ssc)){
+                            try {
+                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + (offset + ssc.getIndex()) + "(incl. offset: " + offset + ") failed");
+                            } catch (CDKException ex) {
+                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }                        
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
         
     }
     
@@ -497,7 +499,7 @@ public final class SSCLibrary {
             final String property = (String) argValues[5];
             final String atomType = (String) argValues[6];
             System.out.println("-> importing from: " + pathToNMRShiftDB + " ...");
-            sscLibrary.setNthreads(nthreads);
+            sscLibrary.setNThreads(nthreads);
             sscLibrary.importFromNMRShiftDB(pathToNMRShiftDB, property, atomType, maxsphere, offset);
             System.out.println(" -> imported! -> #SSC: " + sscLibrary.getSSCCount() + ", next offset: " + (Collections.max(sscLibrary.getSSCIndices()) + 1));
             System.out.println("-> exporting to: " + pathToJSON + " ...");
