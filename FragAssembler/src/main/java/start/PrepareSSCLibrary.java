@@ -48,16 +48,20 @@ public class PrepareSSCLibrary {
     private final String pathToNMRShiftDB;
     private SSCLibrary sscLibrary;   
     
-    public PrepareSSCLibrary(final int nThreads){
+    public PrepareSSCLibrary(final int nThreads) throws CDKException {
         this(nThreads, false, false, "", -1);
     }    
     
-    public PrepareSSCLibrary(final int nThreads, final boolean importFromNMRShiftDB, final boolean extendFromNMRShiftDB, final String pathToNMRShiftDB, final int maxSphere){
+    public PrepareSSCLibrary(final int nThreads, final boolean importFromNMRShiftDB, final boolean extendFromNMRShiftDB, final String pathToNMRShiftDB, final int maxSphere) throws CDKException {
         this.importFromNMRShiftDB = importFromNMRShiftDB;
         this.extendFromNMRShiftDB = extendFromNMRShiftDB;
         this.pathToNMRShiftDB = pathToNMRShiftDB;
         this.maxSphere = maxSphere;
         this.nThreads = nThreads;
+        
+        if (this.maxSphere < 2) {
+            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\" < 2");
+        }
     }
     
     public SSCLibrary processJSONFile(final String pathToJSON) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException, IOException {
