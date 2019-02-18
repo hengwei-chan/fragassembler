@@ -363,7 +363,7 @@ public class Assembly {
 //            System.out.println("entering substructure extension!!!");
             resultSSCExtension = Assembly.extendSSC(ssc1, ssc2, mappedAtomIndices, pickPrecision);
             if (resultSSCExtension == null) {
-                System.out.println("---> could not extend ssc1 -> set to backup!");
+                System.out.println("---> could not extend ssc1 -> set to backup SSC!");
                 ssc1 = ssc1Backup.getClone();
                 continue;
             }
@@ -482,7 +482,7 @@ public class Assembly {
         for (final Map.Entry<Integer, Integer> entry : mappedAtomIndices.entrySet()) {
             mappedAtomIndexSSC2 = entry.getKey();
             mappedAtomIndexSSC1 = entry.getValue();
-            if (!ssc1.isUnsaturated(mappedAtomIndexSSC1)) {
+            if ((ssc1.isUnsaturated(mappedAtomIndexSSC1) == null) || !ssc1.isUnsaturated(mappedAtomIndexSSC1)) {
                 continue;
             }
             System.out.println("\nmapping: " + mappedAtomIndexSSC2 + ", " + mappedAtomIndexSSC1
@@ -533,8 +533,8 @@ public class Assembly {
                         if (atomToAdd.getSymbol().equals(ssc1.getSubspectrumAtomType())) {
                             signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, connectedNodeInSphereToAddSSC2.getKey()));
                             if (signalToAddSSC2 == null) {
-                                ssc1.getSubstructure().removeBond(bondToAdd);
-                                ssc1.getSubstructure().removeAtom(atomToAdd);
+//                                ssc1.getSubstructure().removeBond(bondToAdd);
+//                                ssc1.getSubstructure().removeAtom(atomToAdd);
                                
                                 return null;
                             }
@@ -610,7 +610,7 @@ public class Assembly {
                         ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, j)), shiftTol)) {
 //                    maxMatchingSphere = Assembly.getMaximumMatchingSphereHOSECode(ssc1.getHOSECode(i), ssc2.getHOSECode(j));
                     maxMatchingSphere = Match.getMaximumMatchingSphere(ssc1, ssc2, i, j, shiftTol);
-                    System.out.println("i: " + i + ", " + j + ": " + maxMatchingSphere);
+//                    System.out.println("i: " + i + ", " + j + ": " + maxMatchingSphere);
                 }
                 if (maxMatchingSphere >= minSphereMatchCount) {
                     // && (maxMatchingSphere <= maxSphereMatchCount)) {
@@ -659,10 +659,9 @@ public class Assembly {
                     for (int i = 0; i < ssc2.getConnectionTree(overlapAtomIndexSSC2).getNodesCountInSphere(s); i++) {
                         mappedAtomIndexSSC2 = ssc2.getConnectionTree(overlapAtomIndexSSC2).getNodeKeysInSphere(s).get(i);
                         mappedAtomIndexSSC1 = ssc1.getConnectionTree(overlapAtomIndexSSC1).getNodeKeysInSphere(s).get(i);
-                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
-                            continue;
-                        }
-                        if (mappedAtomIndexSSC1 == -1) {
+                        if (ssc1.getConnectionTree(overlapAtomIndexSSC1).getNode(mappedAtomIndexSSC1).isRingClosureNode()
+                                || (mappedAtomIndexSSC1 == -1)
+                                || ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
                             continue;
                         }
                         if (mappedAtomIndices.containsKey(mappedAtomIndexSSC2) && (mappedAtomIndices.get(mappedAtomIndexSSC2) != -1)) {
@@ -687,13 +686,12 @@ public class Assembly {
                     //                    System.out.println(" -> in s: " + s + " -> mapped equal node:  " + mappedEqualNodesKeys);
                     for (final Map.Entry<Integer, Integer> entry : mappedEqualNodesKeys.entrySet()) {
                         mappedAtomIndexSSC2 = entry.getKey();
-                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()) {
-                            continue;
-                        }
                         mappedAtomIndexSSC1 = entry.getValue();
-                        if (mappedAtomIndexSSC1 == -1) {
+                        if (ssc2.getConnectionTree(overlapAtomIndexSSC2).getNode(mappedAtomIndexSSC2).isRingClosureNode()
+                                || (mappedAtomIndexSSC1 == -1)
+                                || ssc1.getConnectionTree(overlapAtomIndexSSC1).getNode(mappedAtomIndexSSC1).isRingClosureNode()) {
                             continue;
-                        }
+                        }                                               
                         if (mappedAtomIndices.containsKey(mappedAtomIndexSSC2) && (mappedAtomIndices.get(mappedAtomIndexSSC2) != -1)) {
                             //                            if (mappedAtomIndices.get(mappedAtomIndexSSC2) != mappedAtomIndexSSC1) {
                             //                                System.out.println(" in s: " + s + " -> !!!tried to set mappedAtomIndexSSC1 more than one time!!! -> "
