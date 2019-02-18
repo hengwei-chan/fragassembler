@@ -7,17 +7,19 @@
     -   add exceptions where needed
     -   deep cloning of SSC class (and used objects within that)
     -   optimizing the steps for SSC extension?
-    -   consider charges in HOSE code generation/usage
+    -   consider charges in HOSE code generation/usage and assembly process 
+        when checking for being a final SSC
     -   ConcurrentHashMap instead of HashMap when using parallel mode?
     -   consider special bond/valency case for N, P and S in assembly step
     -   some structures in NMRShiftDB include not an assignment for each carbon 
         atom to a signal, i.e. when equivalent signals in symmetries are 
         not explicit given -> those structures will be ignored completely for now
 
--   how to make it faster:
+-   how to make it faster (and thinner):
     -   usage of connection matrix only instead of IAtomContainer?
-    -   pre-search usage when reading MongoDB collection?
+    -   pre-search usage when reading MongoDB collection or JSON file?
         - then use only those SSCs as SSC library
-    - generally usage of documents from MongoDB instead of SSC class objects?
+    -   generally usage of documents from MongoDB or JSON objects 
+        instead of SSC class objects?
 
 
