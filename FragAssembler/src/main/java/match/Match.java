@@ -207,9 +207,8 @@ public class Match {
      * @param sphere
      * @param shiftTol
      * @return
-     * @throws CloneNotSupportedException
      */
-    public static HashMap<Integer, Integer> mapEqualNodesInSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) throws CloneNotSupportedException {
+    public static HashMap<Integer, Integer> mapEqualNodesInSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) {
         final ConnectionTree connectionTree1 = ssc1.getConnectionTree(atomIndexInSubstructure1);
         final ConnectionTree connectionTree2 = ssc2.getConnectionTree(atomIndexInSubstructure2);
         if (sphere > Integer.min(connectionTree1.getMaxSphere(), connectionTree2.getMaxSphere())) {
@@ -239,13 +238,11 @@ public class Match {
 
     /**
      * Returns the average of all deviations within a given input array.
-     * If the minimum overlap threshold is not reached, a null value will be
-     * returned.
      *
      * @param deviations Deviations
      * @return
      *
-     * @see #getDeviations(model.SSC, casekit.NMR.model.Spectrum, double)
+     * @see #getDeviations(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double) 
      */
     public static Double getMatchFactor(final Double[] deviations) {
         for (final Double deviation : deviations) {
@@ -268,7 +265,7 @@ public class Match {
      * @return
      *
      * @see #getDeviations(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double)
-     * @see casekit.NMR.Utils#getMatchFactor(java.lang.Double[], int)
+     * @see #getMatchFactor(java.lang.Double[]) 
      */
     public static Double getMatchFactor(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
         return Match.getMatchFactor(Match.getDeviations(spectrum1, spectrum2, pickPrecision));
@@ -319,7 +316,8 @@ public class Match {
      *
      * @param spectrum1
      * @param spectrum2
-     * @param pickPrecision Tolerance value [ppm] used during peak peaking
+     * @param pickPrecision Tolerance value [ppm] used during spectra shift 
+     * comparison
      * @return Assignments with signal indices of spectrum1 and matched indices
      * in spectrum2; assignments are unset (-1) if spectrum1 has a different nucleus
      * than spectrum2
@@ -413,8 +411,8 @@ public class Match {
         final ConnectionTreeNode parentNode1;
         final ConnectionTreeNode parentNode2;
         if ((atom1 != null) && (atom2 != null) && !nodeInSphere1.isRingClosureNode() && !nodeInSphere2.isRingClosureNode()) {
-            if (atom1.getSymbol().equals(atom2.getSymbol()) && (Integer.compare(atom1.getImplicitHydrogenCount(), atom2.getImplicitHydrogenCount()) == 0) && atom1.isAromatic() == atom2.isAromatic() && atom1.isInRing() == atom2.isInRing()) {
-                if ((signal1 != null) && (signal2 != null) && ((Math.abs(signal1.getShift(0) - signal2.getShift(0)) > shiftTol) || !signal1.getMultiplicity().equals(signal2.getMultiplicity()))) {
+            if (atom1.getSymbol().equals(atom2.getSymbol()) && (Integer.compare(atom1.getImplicitHydrogenCount(), atom2.getImplicitHydrogenCount()) == 0)){// && atom1.isAromatic() == atom2.isAromatic() && atom1.isInRing() == atom2.isInRing()) {
+                if ((signal1 != null) && (signal2 != null) && ((Math.abs(signal1.getShift(0) - signal2.getShift(0)) > shiftTol) || !signal1.getMultiplicity().equals(signal2.getMultiplicity()))) {                    
                     return false;
                 }
                 //                if ((nodeInSphere1.getSphere() > 0) && (nodeInSphere2.getSphere() > 0)) {

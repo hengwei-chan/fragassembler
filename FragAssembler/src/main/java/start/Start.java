@@ -46,11 +46,30 @@ public class Start {
     private int nThreads, nStarts, maxSphere;
     private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON;
     private SSCLibrary sscLibrary;   
-    private ProcessQueries processQueries;
+    private ProcessQueriesJSON processQueriesJSON;
+    private ProcessQueriesMongoDB processQueriesMongoDB;
     public static final String SPECTRUM_PROPERTY = "Spectrum 13C 0";
     public static final String SPECTRUM_PROPERTY_ATOMTYPE = "C";
-    public static final double PICK_PRECISION = 0.5, MATCH_FACTOR_THRS = 10.0, SHIFT_TOL = 7.0;
-        
+    public static final double PICK_PRECISION = 0.3, MATCH_FACTOR_THRS = 3.0, SHIFT_TOL = 3.0;
+    public static final int MIN_MATCHING_SPHERE_COUNT = 1;
+    
+    public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {
+        if (this.useMongoDB) {
+            final PrepareMongoDB prepareMongoDB = new PrepareMongoDB(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
+            prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
+            this.processQueriesMongoDB = new ProcessQueriesMongoDB(this.pathToQueriesFile, this.pathToOutputsFolder, this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, this.nThreads, this.nStarts);
+            this.processQueriesMongoDB.process();
+        } else if (this.useJSON) {
+            final PrepareJSONFile prepareJSONFile = new PrepareJSONFile(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
+            this.sscLibrary = prepareJSONFile.prepare(this.pathToJSON);
+            this.processQueriesJSON = new ProcessQueriesJSON(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts);
+            this.processQueriesJSON.process();
+        } else {
+            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
+        }
+        System.gc();
+    }
+    
     
     private void parseArgs(String[] args) throws ParseException, org.apache.commons.cli.ParseException, CDKException {
         Options options = setupOptions(args);
@@ -89,7 +108,7 @@ public class Start {
                     this.useMongoDB = false;
                     this.useJSON = false;
                     throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
-            }
+            }            
             
             if(cmd.hasOption("import") || cmd.hasOption("extend")){
                 if (cmd.hasOption("import")) {
@@ -98,22 +117,25 @@ public class Start {
                 } else {//if (cmd.hasOption("extend")) {
                     this.importFromNMRShiftDB = false;
                     this.extendFromNMRShiftDB = true;                    
-                }  
-                System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
-                System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB);
+                }                  
                 if (!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")) {
                     throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": parameter \"nmrshiftdb\" and/or \"maxsphere\" is missing\"");
                 } else {
-                    this.pathToNMRShiftDB = cmd.getOptionValue("nmrshiftdb");
-                    this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));    
+                    this.pathToNMRShiftDB = cmd.getOptionValue("nmrshiftdb");   
+                    this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));
                     if (this.maxSphere < 2) {
                         throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\" < 2");
                     }
+                    System.out.println("-nmrshiftdb: " + this.pathToNMRShiftDB);
+                    System.out.println("-maxsphere: " + this.maxSphere);
                 }
             } else {
                 this.importFromNMRShiftDB = false;
                 this.extendFromNMRShiftDB = false;
             }     
+            
+            System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
+            System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB);
             this.nThreads = Integer.parseInt(cmd.getOptionValue("nthreads", "1"));            
             this.nStarts = Integer.parseInt(cmd.getOptionValue("nstarts", "-1"));                        
             
@@ -150,6 +172,15 @@ public class Start {
                 .desc("Path to a file containing the query spectra in NMRShiftDB format. One spectrum for each line.")
                 .build();
         options.addOption(pathToQueryFileOption);
+        Option maxsphereOption = Option.builder("maxsphere")
+                .required(false)
+                .hasArg()
+                .desc("Maximum sphere limit for SSC creation. Minimum value is 2."
+                        + "\nIf the \"import\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached."
+                        + "\nIf the \"extend\" option is selected: only SSCs with exactly spherical limit \"maxsphere\" will be created." 
+                        + "\nIf both parameters are given: the \"import\" will be done.")
+                .build();
+        options.addOption(maxsphereOption);
         Option pathToOutputsFolderOption = Option.builder("o")
                 .required(false)
                 .hasArg()
@@ -187,15 +218,6 @@ public class Start {
                 .desc("Path to NMRShiftDB (SDF).")
                 .build();
         options.addOption(nmrshiftdb);
-        Option maxsphereOption = Option.builder("maxsphere")
-                .required(false)
-                .hasArg()
-                .desc("Maximum sphere limit for SSC creation. Minimum value is 2."
-                        + "\nIf the \"import\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached."
-                        + "\nIf the \"extend\" option is selected: only SSCs with exactly spherical limit \"maxsphere\" will be created." 
-                        + "\nIf both parameters are given: the \"import\" will be done.")
-                .build();
-        options.addOption(maxsphereOption);
         Option mongoUserOption = Option.builder("u")
                 .required(false)
                 .hasArg()
@@ -253,22 +275,6 @@ public class Start {
             System.err.println(e.getMessage());
         }
 
-    }
-    
-    
-    public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {
-        final PrepareSSCLibrary prepareSSCLibrary = new PrepareSSCLibrary(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-        if(this.useMongoDB){
-            this.sscLibrary = prepareSSCLibrary.processMongoDB(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
-        } else if(this.useJSON){
-            this.sscLibrary = prepareSSCLibrary.processJSONFile(this.pathToJSON);
-        } else {
-            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
-        }            
-        System.gc();
-        this.processQueries = new ProcessQueries(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts);
-        processQueries.process();
-    }
-    
+    }                
     
 }

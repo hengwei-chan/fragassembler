@@ -76,15 +76,15 @@ public class Fragmentation {
      * @throws java.lang.CloneNotSupportedException
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads, final int offset) throws InterruptedException, CDKException, CloneNotSupportedException {
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads, final long offset) throws InterruptedException, CDKException, CloneNotSupportedException {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final SSCLibrary sscLibrary = new SSCLibrary();
         final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
         // add all task to do        
-        int offsetSSCIndex = offset;
+        long offsetSSCIndex = offset;
         for (final int index: SSCComponentsSet.keySet()) {
-            final int offsetSSCIndexFinalCopy = offsetSSCIndex;           
+            final long offsetSSCIndexFinalCopy = offsetSSCIndex;           
             callables.add((Callable<SSCLibrary>) () -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxNoOfSpheres, offsetSSCIndexFinalCopy));
             offsetSSCIndex += ((IAtomContainer) SSCComponentsSet.get(index)[0]).getAtomCount();
         }
@@ -122,7 +122,7 @@ public class Fragmentation {
      * @throws java.lang.CloneNotSupportedException
      * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
      */
-    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxNoOfSpheres, final int offsetSSCIndex) throws CloneNotSupportedException, CDKException {
+    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxNoOfSpheres, final long offsetSSCIndex) throws CloneNotSupportedException, CDKException {
         final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];        
         final Spectrum spectrum = (Spectrum) SSCComponentsSet[1];
         final Assignment assignment = (Assignment) SSCComponentsSet[2];
@@ -135,7 +135,6 @@ public class Fragmentation {
                 if(!atom.getSymbol().equals(Utils.getAtomTypeFromSpectrum(spectrum, 0))){
                     continue;
                 }
-                
                 for (int i = 0; i < structure.getAtomCount(); i++) {
                     if((structure.getAtom(i) == atom) && (i != prevAtomIndices.get(atom))){
                         assignment.setAssignment(0, assignment.getSignalIndex(0, prevAtomIndices.get(atom)), i);
@@ -156,7 +155,7 @@ public class Fragmentation {
         }
        
         return sscLibrary;
-    }
+    }        
     
     /**
      * Builds a substructure-subspectrum-correlation ({@link model.SSC}) object 
@@ -190,6 +189,8 @@ public class Fragmentation {
                 subassignment.addAssignment(new int[]{j});
             }            
         }
+        subspectrum.setSolvent(spectrum.getSolvent());
+        subspectrum.setSpectrometerFrequency(spectrum.getSpectrometerFrequency());
         Utils.setSpectrumEquivalences(subspectrum);
 
         // tries to return a valid SSC with all complete information

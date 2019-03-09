@@ -34,6 +34,7 @@ import java.util.HashSet;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
+import search.MultiplicitySectionsBuilder;
 
 /**
  * Class for representing a subspectrum-substructure-correlation.
@@ -57,12 +58,14 @@ public final class SSC {
     // stores all atom indices for each occurring atom type in substructure    
     private HashMap<String, ArrayList<Integer>> atomTypeIndices;
     // for pre-search: map of multiplicities as keys consisting 
-    // of maps of shift values as keys and its atom indices
-    private final HashMap<String, HashMap<Integer, ArrayList<Integer>>> presenceMultiplicities;
+    // of section indices with occurrency in this SSC
+    private HashMap<String, ArrayList<Integer>> multiplicitySections;
+    private final MultiplicitySectionsBuilder multiplicitySectionsBuilder;
     // index to use in SSC library
-    private int index;
+    private long index;
     // indices of open-sphere (unsaturated) atoms of substructure
-    private final ArrayList<Integer> unsaturatedAtomIndices;
+    private final ArrayList<Integer> unsaturatedAtomIndices;    
+    public final static int MIN_LIMIT = -20, MAX_LIMIT = 260, STEP_SIZE = 5, STEPS = (MAX_LIMIT - MIN_LIMIT) / STEP_SIZE; // ppm range from -20 to 260 in 5 ppm steps
 
     /**
      *
@@ -85,7 +88,8 @@ public final class SSC {
         this.connectionTrees = new HashMap<>();
         this.index = -1;
         this.unsaturatedAtomIndices = new ArrayList<>();
-        this.presenceMultiplicities = new HashMap<>();
+        this.multiplicitySections = new HashMap<>();      
+        this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
         this.update();
     }   
     
@@ -107,7 +111,7 @@ public final class SSC {
      * @throws CDKException
      * @see #updateAtomTypeIndices() 
      * @see #updateUnsaturatedAtomIndices() 
-     * @see #updatePresenceMultiplicities() 
+     * @see #updateMultiplicitySections() 
      * @see #updateHOSECodes() 
      */
     public void update() throws CDKException {
@@ -115,7 +119,7 @@ public final class SSC {
         this.updateAtomTypeIndices();        
         this.updateUnsaturatedAtomIndices();                 
         this.updateHOSECodes();
-        this.updatePresenceMultiplicities(); 
+        this.updateMultiplicitySections(); 
     }
     
     @Override
@@ -125,12 +129,10 @@ public final class SSC {
             output += "\n-> " + atomType + ": " +  this.atomTypeIndices.get(atomType);
         }
         output += "\nunsaturated atoms (indices): \n-> " + this.unsaturatedAtomIndices;        
-        output += "\nmultiplicities, shifts (integer) and atom indices:";
-        for (final String mult : this.presenceMultiplicities.keySet()) {
-            output += "\n-> " + mult + ":\t";
-            for (final int shift : this.presenceMultiplicities.get(mult).keySet()) {
-                output += shift + " -> " + this.presenceMultiplicities.get(mult).get(shift) + ", ";
-            }
+        output += "\nmultiplicities and shift section:";
+        for (final String mult : this.multiplicitySections.keySet()) {
+            output += "\n-> " + mult + ":\t" + this.multiplicitySections.get(mult);
+            
         }        
         output += "\nmax sphere: " + this.maxSphere;
         output += "\natoms (indices), HOSE codes and connection trees: ";
@@ -193,34 +195,12 @@ public final class SSC {
     } 
     
     /**
-     * Specified for carbons only.
+     * Specified for carbons only -> still open.
      *
      * @throws org.openscience.cdk.exception.CDKException
      */
-    public void updatePresenceMultiplicities() throws CDKException {
-        final HashSet<String> mults = new HashSet<>(); //{"S", "D", "T", "Q"}
-        mults.add("S"); mults.add("D"); mults.add("T"); mults.add("Q"); 
-        // init
-        for (final String mult : mults) {            
-            this.presenceMultiplicities.put(mult, new HashMap<>());
-        }        
-        // pre-search and settings  
-        Signal signal;
-        int shift;
-        for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
-            signal = this.subspectrum.getSignal(i);
-            if((signal == null)|| (signal.getShift(0) == null) 
-                    || (signal.getMultiplicity() == null) 
-                    || (signal.getIntensity() == null)
-                    || (!mults.contains(signal.getMultiplicity()))){
-                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": signal, shift or multiplicity is missing");
-            }
-            shift = signal.getShift(0).intValue();
-            if(!this.presenceMultiplicities.get(signal.getMultiplicity()).containsKey(shift)){
-                this.presenceMultiplicities.get(signal.getMultiplicity()).put(shift, new ArrayList<>());
-            }
-            this.presenceMultiplicities.get(signal.getMultiplicity()).get(shift).add(this.assignment.getAtomIndex(0, i));    
-        }
+    public void updateMultiplicitySections() throws CDKException {            
+        this.multiplicitySections = this.multiplicitySectionsBuilder.getMultiplicitySections(this.subspectrum);
     }    
 
     public boolean updateHOSECodes() throws CDKException {
@@ -340,11 +320,11 @@ public final class SSC {
         return this.maxSphere;
     }
     
-    public void setIndex(final int index){
+    public void setIndex(final long index){
         this.index = index;
     }
     
-    public int getIndex(){
+    public long getIndex(){
         return this.index;
     }
     
@@ -380,8 +360,8 @@ public final class SSC {
         return this.atomTypeIndices;
     }
     
-    public HashMap<String, HashMap<Integer, ArrayList<Integer>>> getPresenceMultiplicities(){
-        return this.presenceMultiplicities;
+    public HashMap<String, ArrayList<Integer>> getMultiplicitySections(){
+        return this.multiplicitySections;
     }        
     
     public String getSubspectrumAtomType(){

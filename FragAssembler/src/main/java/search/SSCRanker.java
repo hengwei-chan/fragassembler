@@ -21,9 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package rank;
+package search;
 
-import assembly.Assembly;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
@@ -48,9 +47,9 @@ public final class SSCRanker {
 
     private final SSCLibrary sscLibrary;
     private int nThreads;
-    private final HashMap<Integer, Assignment> matchAssignments;
-    private final HashMap<Integer, Double> matchFactors;    
-    private final ArrayList<Integer> rankedSSCIndices;
+    private final HashMap<Long, Assignment> matchAssignments;
+    private final HashMap<Long, Double> matchFactors;    
+    private final ArrayList<Long> rankedSSCIndices;
     
     /**
      * Instanciates a new object of this class.
@@ -121,7 +120,7 @@ public final class SSCRanker {
      *  
      * @see #rank(casekit.NMR.model.Spectrum, double)  
      */
-    public HashMap<Integer, Assignment> getMatchAssignments(){
+    public HashMap<Long, Assignment> getMatchAssignments(){
         return this.matchAssignments;
     }
     
@@ -133,7 +132,7 @@ public final class SSCRanker {
      *  
      * @see #rank(casekit.NMR.model.Spectrum, double) 
      */
-    public HashMap<Integer, Double> getMatchFactors(){
+    public HashMap<Long, Double> getMatchFactors(){
         return this.matchFactors;
     }
     
@@ -147,7 +146,7 @@ public final class SSCRanker {
      */
     public ArrayList<Double> getRankedMatchFactors(){
         final ArrayList<Double> rankedMatchFactors = new ArrayList<>();
-        for (final int SSCIndex : this.rankedSSCIndices) {
+        for (final long SSCIndex : this.rankedSSCIndices) {
             rankedMatchFactors.add(this.matchFactors.get(SSCIndex));
         }
         
@@ -162,7 +161,7 @@ public final class SSCRanker {
      * 
      * @see #rank(casekit.NMR.model.Spectrum, double) 
      */
-    public ArrayList<Integer> getRankedSSCIndices(){
+    public ArrayList<Long> getRankedSSCIndices(){
         return this.rankedSSCIndices;
     }
     
@@ -179,7 +178,7 @@ public final class SSCRanker {
     public SSCLibrary getRankedSSCLibrary() throws CDKException, CloneNotSupportedException{
         final SSCLibrary rankedSSCLibrary = new SSCLibrary(this.nThreads);
         SSC rankedSSC;
-        for (final int rankedSSCIndex : this.rankedSSCIndices) {
+        for (final long rankedSSCIndex : this.rankedSSCIndices) {
             rankedSSC = this.getSSCLibrary().getSSC(rankedSSCIndex).getClone();
             rankedSSC.setIndex(rankedSSCLibrary.getSSCCount());
             rankedSSCLibrary.insert(rankedSSC);
@@ -215,11 +214,11 @@ public final class SSCRanker {
         this.matchAssignments.clear();
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<HashMap<Integer, Assignment>>> callables = new ArrayList<>();
+        final ArrayList<Callable<HashMap<Long, Assignment>>> callables = new ArrayList<>();
         // add all task to do
         for (final SSC ssc : this.sscLibrary.getSSCs()) {
-            callables.add((Callable<HashMap<Integer, Assignment>>) () -> {
-                final HashMap<Integer, Assignment> tempHashMap = new HashMap<>();
+            callables.add((Callable<HashMap<Long, Assignment>>) () -> {
+                final HashMap<Long, Assignment> tempHashMap = new HashMap<>();
                 tempHashMap.put(ssc.getIndex(), Match.matchSpectra(ssc.getSubspectrum(), querySpectrum, pickPrecision));
                 return tempHashMap;
             });
@@ -247,11 +246,11 @@ public final class SSCRanker {
         this.matchFactors.clear();
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<HashMap<Integer, Double>>> callables = new ArrayList<>();
+        final ArrayList<Callable<HashMap<Long, Double>>> callables = new ArrayList<>();
         // add all task to do
         for (final SSC ssc : this.sscLibrary.getSSCs()) {
-            callables.add((Callable<HashMap<Integer, Double>>) () -> {
-                final HashMap<Integer, Double> tempHashMap = new HashMap<>();                
+            callables.add((Callable<HashMap<Long, Double>>) () -> {
+                final HashMap<Long, Double> tempHashMap = new HashMap<>();                
                 tempHashMap.put(ssc.getIndex(), Match.getMatchFactor(ssc.getSubspectrum(), querySpectrum, pickPrecision));
                 return tempHashMap;
             });
@@ -283,9 +282,9 @@ public final class SSCRanker {
         this.rankedSSCIndices.clear();
         this.rankedSSCIndices.addAll(this.matchFactors.keySet()); // use SSC indices of SSC library
         
-        Collections.sort(this.rankedSSCIndices, new Comparator<Integer>() {
+        Collections.sort(this.rankedSSCIndices, new Comparator<Long>() {
             @Override
-            public int compare(final Integer indexSSC1, final Integer indexSSC2) {          
+            public int compare(final Long indexSSC1, final Long indexSSC2) { 
                 // ranking by number of overlapping signals
                 final int setAssignmentsCountComp = -1 * Integer.compare(
                         matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
@@ -297,21 +296,21 @@ public final class SSCRanker {
                 final int matchFactorComp = Double.compare(matchFactors.get(indexSSC1), matchFactors.get(indexSSC2));
                 if(matchFactorComp != 0){
                     return matchFactorComp;
-                }                 
-//                // ranking by number of overlapping signals
-//                final int setAssignmentsCountComp = -1 * Integer.compare(
-//                        matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
-//                        matchAssignments.get(indexSSC2).getSetAssignmentsCount(0));
-//                if(setAssignmentsCountComp != 0){
-//                    return setAssignmentsCountComp; 
-//                }               
+                } 
                 // ranking by total subtructure size
                 final int substructureSizeComp = -1 * Integer.compare(
                         sscLibrary.getSSC(indexSSC1).getAtomCount(), 
                         sscLibrary.getSSC(indexSSC2).getAtomCount());
                 if(substructureSizeComp != 0){
                     return substructureSizeComp; 
-                }
+                }  
+//                // ranking by number of overlapping signals
+//                final int setAssignmentsCountComp = -1 * Integer.compare(
+//                        matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
+//                        matchAssignments.get(indexSSC2).getSetAssignmentsCount(0));
+//                if (setAssignmentsCountComp != 0) {
+//                    return setAssignmentsCountComp;
+//                }  
                 // ranking by unsaturated atoms (increasing)
                 final int unsaturatedAtomsCountComp = Integer.compare(
                         sscLibrary.getSSC(indexSSC1).getUnsaturatedAtomIndices().size(),
@@ -320,5 +319,4 @@ public final class SSCRanker {
             }
         });
     }        
-    
 }

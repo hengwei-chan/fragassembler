@@ -3,7 +3,7 @@
     -   set aromaticities in each SSC sustructure too? -> information is lost 
         after building fragments
     -   check for multiple assignments/symmetry in match.Match class in 
-        matchSpectra() method 
+        matchSpectra() method (at "-> still open")
     -   add exceptions where needed
     -   deep cloning of SSC class (and used objects within that)
     -   optimizing the steps for SSC extension?
@@ -17,9 +17,11 @@
 
 -   how to make it faster (and thinner):
     -   usage of connection matrix only instead of IAtomContainer?
-    -   pre-search usage when reading MongoDB collection or JSON file?
-        - then use only those SSCs as SSC library
+    -   pre-searches using MongoDB shell script (JavaScript)
+        -   export results as JSON file and load it then into the Java environment
     -   generally usage of documents from MongoDB or JSON objects 
         instead of SSC class objects?
+    -   Fragmentation class: directly adding new generated SSCs to 
+        SSCLibrary object (to give as paramter then)
 
 

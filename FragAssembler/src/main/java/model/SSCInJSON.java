@@ -26,6 +26,8 @@ package model;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
+import java.util.ArrayList;
+import java.util.HashMap;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.graph.matrix.ConnectionMatrix;
 import org.openscience.cdk.interfaces.IAtom;
@@ -49,7 +51,9 @@ public class SSCInJSON {
     final Integer[][] bondIDs;
     final Spectrum subspectrum;
     final Assignment assignment;
-    final int index, rootAtomIndex, maxSphere;
+    final long index;
+    final int rootAtomIndex, maxSphere;
+    final HashMap<String, ArrayList<Integer>> multSections;
     
     public SSCInJSON(final SSC ssc){
         this.connectionMatrix = ConnectionMatrix.getMatrix(ssc.getSubstructure());
@@ -68,6 +72,7 @@ public class SSCInJSON {
         this.index = ssc.getIndex();
         this.rootAtomIndex = ssc.getRootAtomIndex();
         this.maxSphere = ssc.getMaxSphere();
+        this.multSections = ssc.getMultiplicitySections();
         
         this.initAtomsProperties(ssc.getSubstructure());
         this.initBondsProperties(ssc.getSubstructure());
@@ -93,7 +98,7 @@ public class SSCInJSON {
         }
     }
     
-    public int getIndex(){
+    public long getIndex(){
         return this.index;
     }
     

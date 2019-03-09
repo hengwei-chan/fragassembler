@@ -43,27 +43,27 @@ import org.openscience.cdk.exception.InvalidSmilesException;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smiles.SmilesParser;
-import rank.SSCRanker;
+import search.MultiplicitySectionsBuilder;
+import search.SSCRanker;
 
 /**
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
-public class ProcessQueries {
+public class ProcessQueriesJSON {
     
     private final SSCLibrary sscLibrary;
     private final String pathToQueriesFile, pathToOutputsFolder;
     private final int nThreads, nStarts;
     private final SmilesParser smilesParser;
     private final BufferedReader br;
-    private final int minMatchingSphereCount;
+    private final TimeMeasurement tm;
     
-    public ProcessQueries(final SSCLibrary sscLibrary, final String pathToQueriesFile, final String pathToOutputsFolder) throws FileNotFoundException {
+    public ProcessQueriesJSON(final SSCLibrary sscLibrary, final String pathToQueriesFile, final String pathToOutputsFolder) throws FileNotFoundException {
         this(sscLibrary, pathToQueriesFile, pathToOutputsFolder, 1, -1);
     }
 
-    public ProcessQueries(final SSCLibrary sscLibrary, final String pathToQueriesFile, final String pathToOutputsFolder, final int nThreads, final int nStarts) throws FileNotFoundException {
-        this.minMatchingSphereCount = 0;
+    public ProcessQueriesJSON(final SSCLibrary sscLibrary, final String pathToQueriesFile, final String pathToOutputsFolder, final int nThreads, final int nStarts) throws FileNotFoundException {
         this.pathToQueriesFile = pathToQueriesFile;
         this.pathToOutputsFolder = pathToOutputsFolder;
         this.nThreads = nThreads;        
@@ -72,8 +72,8 @@ public class ProcessQueries {
         this.nStarts = nStarts;
         this.smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         this.br = new BufferedReader(new FileReader(this.pathToQueriesFile));
-    }    
-    
+        this.tm = new TimeMeasurement();
+    }
     
     public void process() throws FileNotFoundException, InterruptedException, IOException, InvalidSmilesException, CDKException, CloneNotSupportedException {
         int nStartSSCs;
@@ -99,9 +99,14 @@ public class ProcessQueries {
             }
             System.out.println("\n\nnow processing query: " + querySpectrumCounter + " -> " + line + "\n");
 
-            querySpectrum = DB.NMRShiftDBSpectrumToSpectrum(line, "C");
+            querySpectrum = DB.NMRShiftDBSpectrumToSpectrum(line, Start.SPECTRUM_PROPERTY_ATOMTYPE);
+            System.out.println("\nquery spectrum:\t" + querySpectrum.getShifts(0)
+                    + "\nequivalents:\t" + querySpectrum.getEquivalences()
+                    + "\nmultiplicities:\t" + querySpectrum.getMultiplicities() 
+                    + "\nequivalent signals classes: " + querySpectrum.getEquivalentSignalClasses());
+            
             sscRanker.rank(querySpectrum, Start.PICK_PRECISION);
-            System.out.println("no. of matches: " + sscRanker.getMatchFactors().size());
+            System.out.println("\n\nno. of matches: " + sscRanker.getMatchFactors().size());
             System.out.println("match factors: " + sscRanker.getMatchFactors());
             System.out.println("ranked SSC indices: " + sscRanker.getRankedSSCIndices());
             System.out.println("ranked match factors: " + sscRanker.getRankedMatchFactors());
@@ -114,7 +119,7 @@ public class ProcessQueries {
             }
             System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
-            solutions = Assembly.assemble(nStartSSCs, this.nThreads, sscRanker.getRankedSSCLibrary(), minMatchingSphereCount, querySpectrum, Start.SHIFT_TOL, Start.MATCH_FACTOR_THRS, Start.PICK_PRECISION);
+            solutions = Assembly.assemble(nStartSSCs, this.nThreads, sscRanker.getRankedSSCLibrary(), Start.MIN_MATCHING_SPHERE_COUNT, querySpectrum, Start.SHIFT_TOL, Start.MATCH_FACTOR_THRS, Start.PICK_PRECISION);
 
             System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + line + "):\t" + solutions.size());
 

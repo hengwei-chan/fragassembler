@@ -26,10 +26,11 @@ package model;
 import casekit.NMR.DB;
 import casekit.NMR.Utils;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonWriter;
+import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.util.JSON;
 import java.io.BufferedReader;
@@ -66,7 +67,7 @@ import org.json.simple.parser.ParseException;
  */
 public final class SSCLibrary {
 
-    private final HashMap<Integer, SSC> map;
+    private final HashMap<Long, SSC> map;
     private final HashMap<String, ArrayList<Double>> HOSECodeLookupTable;
     private int nThreads;
     
@@ -96,7 +97,7 @@ public final class SSCLibrary {
      *
      * @throws java.lang.InterruptedException
      */
-    public void buildHOSELookupTable() throws InterruptedException{  
+    public void buildHOSELookupTable() throws InterruptedException {  
         this.HOSECodeLookupTable.clear();
         for (final SSC ssc : this.map.values()) {
             if(ssc != null){
@@ -142,69 +143,82 @@ public final class SSCLibrary {
      * Writes this SSC library into a MongoDB collection.
      *
      * @param collection
+     * @throws java.lang.InterruptedException
      */
-    public void exportToMongoDB(final MongoCollection<Document> collection){
+    public void exportToMongoDB(final MongoCollection<Document> collection) throws InterruptedException{
         final Gson gson = new Gson();
-        Document document;
-        for (SSC ssc : this.getSSCs()) {
-            document = new Document();
-            document.append("_id", ssc.getIndex());
-            document.append("ssc", JSON.parse(gson.toJson(gson.toJsonTree(new SSCInJSON(ssc), SSCInJSON.class))));
-            try {
-                collection.insertOne(document);
-//                    System.out.println("Document inserted successfully");
-            } catch (Exception e) {
-                System.err.println("export for key \"" + ssc.getIndex() + "\" failed: " + e.getMessage());
-                System.out.println("-> document: \n" + document.toJson());
-            }
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<Document>> callables = new ArrayList<>();
+        // add all task to do
+        long sscCounter = 0;
+        for (final SSC ssc : this.getSSCs()) {
+            final long sscCounterCopy = sscCounter;
+            callables.add((Callable<Document>) () -> {
+                final Document document = new Document();     
+                ssc.setIndex(sscCounterCopy);
+                document.append("_id", ssc.getIndex());
+                document.append("ssc", JSON.parse(gson.toJson(gson.toJsonTree(new SSCInJSON(ssc), SSCInJSON.class))));
+                return document;
+            });
+            sscCounter++;
         }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((document) -> {
+                    try {
+                        collection.insertOne(document);
+                    } catch (Exception e) {
+                        System.err.println("export for key \"" + document.get("_id") + "\" failed: " + e.getMessage());
+                        System.out.println("-> document: \n" + document.toJson());
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
+        
     }
     
     public void exportToJSONFile(final String pathToJSON) throws IOException, InterruptedException {                        
-        final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        final Gson gson = new Gson();//Builder().setPrettyPrinting().create();
         final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToJSON));
-        final JsonObject jsonObject = new JsonObject();
-        for (int sscIndex : this.map.keySet()) {
-            jsonObject.add(String.valueOf(sscIndex), gson.toJsonTree(new SSCInJSON(this.map.get(sscIndex)), SSCInJSON.class));
+        final JsonObject jsonObject = new JsonObject();           
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<JsonElement>> callables = new ArrayList<>();
+        // add all task to do
+        for (final long sscIndex : this.map.keySet()) {
+            callables.add((Callable<JsonElement>) () -> {
+                return gson.toJsonTree(new SSCInJSON(this.map.get(sscIndex)), SSCInJSON.class);
+            });
         }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((jsonElement) -> {
+                    if (jsonElement != null) {
+//                        System.out.println("index: " + jsonElement.getAsJsonObject().get("index").toString());
+                        jsonObject.add(jsonElement.getAsJsonObject().get("index").toString(), jsonElement);
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
         
-       
-        
-//        // initialize an executor for parallelization
-//        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-//        final ArrayList<Callable<JsonElement>> callables = new ArrayList<>();
-//        // add all task to do
-//        for (final int sscIndex : this.map.keySet()) {
-//            callables.add((Callable<JsonElement>) () -> {
-//                return gson.toJsonTree(new SSCInJSON(this.map.get(sscIndex)), SSCInJSON.class);
-//            });
-//        }
-//        // execute all task in parallel
-//        executor.invokeAll(callables)
-//                .stream()
-//                .map(future -> {
-//                    try {
-//                        return future.get();
-//                    } catch (InterruptedException | ExecutionException e) {
-//                        throw new IllegalStateException(e);
-//                    }
-//                })
-//                .forEach((jsonElement) -> {
-//                    if (jsonElement != null) {
-////                        System.out.println("index: " + jsonElement.getAsJsonObject().get("index").toString());
-//                        jsonObject.add(jsonElement.getAsJsonObject().get("index").toString(), jsonElement);
-//                    }
-//                });
-//        // shut down the executor service
-//        Utils.stopExecuter(executor, 5);
-        
-        
-        
-        
-        JsonWriter writer = new JsonWriter(bw);
-        writer.setIndent("\t"); // <-- without this the file is written without line-breaks and indents        
-//        writer.setLenient(true);
-        gson.toJson(jsonObject, writer);
+        gson.toJson(jsonObject, new JsonWriter(bw));
         bw.close();
     }
     
@@ -219,7 +233,7 @@ public final class SSCLibrary {
      * @throws org.openscience.cdk.exception.CDKException      
      * @throws java.lang.CloneNotSupportedException      
      */
-    public void importFromJSONFile(final String pathToJSON, final int offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException  {
+    public void importFromJSONFile(final String pathToJSON, final long offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException  {
         this.removeAll();
         this.extend(pathToJSON, offset);
     }
@@ -238,6 +252,38 @@ public final class SSCLibrary {
     public void importFromMongoDB(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
         this.removeAll();
         this.extend(collection);
+    }
+    
+    /**
+     * Imports a SSC library by documents from a MongoDB query result 
+     * containing the SSC information.  All current SSCs will be 
+     * deleted.
+     *
+     * @param queryResult 
+     * @throws org.openscience.cdk.exception.CDKException
+     * @throws java.lang.CloneNotSupportedException
+     * @throws java.lang.InterruptedException
+     * 
+     */
+    public void importFromMongoDB(final FindIterable<Document> queryResult) throws CDKException, CloneNotSupportedException, InterruptedException  {
+        this.removeAll();
+        this.extend(queryResult);
+    }
+    
+    /**
+     * Imports a SSC library by documents from a MongoDB 
+     * containing the SSC information.  All current SSCs will be 
+     * deleted.
+     *
+     * @param documents  
+     * @throws org.openscience.cdk.exception.CDKException
+     * @throws java.lang.CloneNotSupportedException
+     * @throws java.lang.InterruptedException
+     * 
+     */
+    public void importFromMongoDB(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
+        this.removeAll();
+        this.extend(documents);
     }
     
     /**
@@ -260,7 +306,7 @@ public final class SSCLibrary {
      * @see #removeAll() 
      * @see #extend(java.lang.String, java.lang.String, java.lang.String, int, int)  
      */
-    public void importFromNMRShiftDB(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final int offset) throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException {
+    public void importFromNMRShiftDB(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException {
         this.removeAll();
         this.extend(pathToNMRShiftDB, property, atomType, maxSphere, offset);
     }
@@ -292,47 +338,138 @@ public final class SSCLibrary {
      */
     public void extend(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
         final Gson gson = new Gson();        
-        SSC ssc;
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
+        // add all task to do
         for (final Document sscDocDB : collection.find()) {
-            ssc = gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
-            if (!this.insert(ssc)) {
-                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-            }
+            callables.add((Callable<SSC>) () -> {
+                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
+            });
         }
-        
-//        // initialize an executor for parallelization
-//        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-//        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
-//        // add all task to do
-//        for (final Document sscDocDB : collection.find()) {
-//            callables.add((Callable<SSC>) () -> {
-//                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
-//            });
-//        }
-//        // execute all task in parallel
-//        executor.invokeAll(callables)
-//                .stream()
-//                .map(future -> {
-//                    try {
-//                        return future.get();
-//                    } catch (InterruptedException | ExecutionException e) {
-//                        throw new IllegalStateException(e);
-//                    }
-//                })
-//                .forEach((ssc) -> {
-//                    if (ssc != null) {
-//                        ssc.setIndex(ssc.getIndex());
-//                        if (!this.insert(ssc)) {
-//                            try {
-//                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-//                            } catch (CDKException ex) {
-//                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-//                            }
-//                        }
-//                    }
-//                });
-//        // shut down the executor service
-//        Utils.stopExecuter(executor, 5);
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((ssc) -> {
+                    if (ssc != null) {
+                        ssc.setIndex(ssc.getIndex());
+                        if (!this.insert(ssc)) {
+                            try {
+                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
+                            } catch (CDKException ex) {
+                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
+    }
+    
+    /**
+     * Extends this SSC library by documents from a MongoDB query result 
+     * containing the SSC information. 
+     * All SSCs in this library object whose indices also exist in the 
+     * given map will be replaced.
+     *
+     * @param queryResult 
+     * @throws org.openscience.cdk.exception.CDKException  
+     * @throws java.lang.CloneNotSupportedException  
+     * @throws java.lang.InterruptedException  
+     * 
+     * @see #containsSSC(int)
+     */
+    public void extend(final FindIterable<Document> queryResult) throws CDKException, CloneNotSupportedException, InterruptedException  {
+        final Gson gson = new Gson();        
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
+        // add all task to do
+        for (final Document sscDocDB : queryResult) {
+            callables.add((Callable<SSC>) () -> {
+                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((ssc) -> {
+                    if (ssc != null) {
+                        ssc.setIndex(ssc.getIndex());
+                        if (!this.insert(ssc)) {
+                            try {
+                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
+                            } catch (CDKException ex) {
+                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
+    }
+    
+    /**
+     * Extends this SSC library by documents from a MongoDB  
+     * containing the SSC information. 
+     * All SSCs in this library object whose indices also exist in the 
+     * given map will be replaced.
+     *
+     * @param documents  
+     * @throws org.openscience.cdk.exception.CDKException  
+     * @throws java.lang.CloneNotSupportedException  
+     * @throws java.lang.InterruptedException  
+     * 
+     * @see #containsSSC(int)
+     */
+    public void extend(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
+        final Gson gson = new Gson();        
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
+        // add all task to do
+        for (final Document sscDocDB : documents) {
+            callables.add((Callable<SSC>) () -> {
+                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((ssc) -> {
+                    if (ssc != null) {
+                        if (!this.insert(ssc)) {
+                            try {
+                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
+                            } catch (CDKException ex) {
+                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
     }
     
     /**
@@ -355,7 +492,7 @@ public final class SSCLibrary {
      * @see Fragmentation#buildSSCLibrary(java.util.HashMap, int, int, int)  
      * @see #containsSSC(int) 
      */
-    public void extend(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final int offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
+    public void extend(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
         final HashMap<Integer, Object[]> SSCComponentsSet = DB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property, atomType);
         this.extend(Fragmentation.buildSSCLibrary(SSCComponentsSet, maxSphere, this.nThreads, offset));
     }
@@ -374,21 +511,10 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException
      * @see #containsSSC(int) 
      */
-    public void extend(final String pathToJSON, final int offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException{
+    public void extend(final String pathToJSON, final long offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException{
         final Gson gson = new Gson();
-//        SSC ssc;
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
         final JsonObject jsonObject = new JsonParser().parse(br).getAsJsonObject();
-//        for (final String sscIndex: jsonObject.keySet()) {
-//            ssc = gson.fromJson(jsonObject.get(sscIndex), SSCInJSON.class).toSSC();
-//            ssc.setIndex(offset + ssc.getIndex());
-//            if(!this.insert(ssc)){
-//                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + (offset + ssc.getIndex()) + "(incl. offset: " + offset + ") failed");
-//            }
-//        }
-        
-        
-        
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
@@ -429,19 +555,19 @@ public final class SSCLibrary {
         return this.map.size();
     }
     
-    public SSC getSSC(final int sscIndex){
+    public SSC getSSC(final long sscIndex){
         return this.map.get(sscIndex);
     } 
     
-    public boolean containsSSC(final int sscIndex){
+    public boolean containsSSC(final long sscIndex){
         return this.map.containsKey(sscIndex);
     }    
     
-    public HashMap<Integer, SSC> getMap(){
+    public HashMap<Long, SSC> getMap(){
         return this.map;
     }
     
-    public HashSet<Integer> getSSCIndices(){
+    public HashSet<Long> getSSCIndices(){
         return new HashSet<>(this.map.keySet());
     }
     
@@ -465,7 +591,7 @@ public final class SSCLibrary {
         return true;
     }
     
-    public boolean remove(final int sscIndex){
+    public boolean remove(final long sscIndex){
         if(this.containsSSC(sscIndex)){
             return false;
         }
