@@ -584,7 +584,7 @@ public class HOSECodeBuilder {
         return HOSECodeBuilder.buildHOSECodeString(connectionTree, useBremserElementNotation);
     }
     
-    public static String buildHOSECode(final IAtomContainer ac, final int rootAtomIndex, final int maxSphere, final boolean useBremserElementNotation) throws CDKException {
+    public static String buildHOSECode(final IAtomContainer ac, final int rootAtomIndex, final Integer maxSphere, final boolean useBremserElementNotation) throws CDKException {
         return HOSECodeBuilder.buildHOSECodeString(HOSECodeBuilder.buildConnectionTree(ac, rootAtomIndex, maxSphere), useBremserElementNotation);
     }
     
