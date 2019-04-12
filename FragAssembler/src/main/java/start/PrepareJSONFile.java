@@ -25,7 +25,6 @@ package start;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.Collections;
 import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 
@@ -57,7 +56,7 @@ public class PrepareJSONFile {
         this.tm = new TimeMeasurement();
     }
 
-    public SSCLibrary prepare(final String pathToJSON) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException, IOException {
+    public SSCLibrary prepare(final String pathToJSON, final boolean removeDuplicates) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException, IOException {
         this.sscLibrary = new SSCLibrary(this.nThreads);
         if (this.importFromNMRShiftDB) {
             long offset = 0;
@@ -65,13 +64,16 @@ public class PrepareJSONFile {
             for (int m = 2; m <= this.maxSphere; m++) {
                 System.out.println("Building SSCs for " + m + "-spheres...");
                 this.tm.start();
-                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, Start.SPECTRUM_PROPERTY_ATOMTYPE, m, offset);
+                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, m, offset);
+                if (removeDuplicates) {
+                    this.sscLibrary.removeDuplicates();
+                }
                 System.out.println("SSCs for " + m + "-spheres build!!!");
                 this.tm.stop();
                 System.out.println("--> time needed: " + this.tm.getResult() + " s");
                 System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
 
-                offset = Collections.max(this.sscLibrary.getSSCIndices()) + 1;
+                offset = this.sscLibrary.getLastSSCIndex() + 1;
             }
             System.out.println("now storing SSC library into JSON file \"" + pathToJSON + "\"...");
             this.tm.start();
@@ -88,11 +90,14 @@ public class PrepareJSONFile {
             System.out.println("--> time needed: " + this.tm.getResult() + " s");
             System.out.println("--> SSC library size:\t" + this.sscLibrary.getSSCCount());
             if (this.extendFromNMRShiftDB) {
-                long offset = Collections.max(this.sscLibrary.getSSCIndices()) + 1;
+                long offset = this.sscLibrary.getLastSSCIndex() + 1;
                 System.out.println("offset: " + offset);
                 System.out.println("Building SSCs for " + this.maxSphere + "-spheres...");
                 this.tm.start();
-                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, Start.SPECTRUM_PROPERTY_ATOMTYPE, maxSphere, offset);
+                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, maxSphere, offset);
+                if (removeDuplicates) {
+                    this.sscLibrary.removeDuplicates();
+                }
                 System.out.println("SSCs for " + this.maxSphere + "-spheres build and added!!!");
                 this.tm.stop();
                 System.out.println("--> time needed: " + this.tm.getResult() + " s");
