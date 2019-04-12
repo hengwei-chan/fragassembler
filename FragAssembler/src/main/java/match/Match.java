@@ -23,75 +23,63 @@
  */
 package match;
 
+import hose.HOSECodeBuilder;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import model.ConnectionTree;
 import model.ConnectionTreeNode;
 import model.SSC;
+import org.apache.commons.lang3.ArrayUtils;
+import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IBond;
+import org.openscience.cdk.similarity.Tanimoto;
 
 /**
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
 public class Match {
-
-
-    //    public static boolean hasStructuralIdentity(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) throws CloneNotSupportedException {
-    //        if(!Assembly.hasEqualNodesInSphere(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, sphere, shiftTol)){
-    //            return false;
-    //        }
-    //        for (int i = 0; i < nodesInSphere1.size(); i++) {
-    //            if (!Assembly.hasEqualChildNodesInNextSphere(connectionTree1, connectionTree2, nodesInSphere1.get(i), nodesInSphere2.get(i))
-    //                    || !Assembly.hasEqualChildNodesInNextSphere(connectionTree2, connectionTree1, nodesInSphere2.get(i), nodesInSphere1.get(i))
-    //                    ) {
-    //                return false;
-    //            }
-    //        }
-    //
-    //        return true;
-    //    }
     
-    /**
-     * Checks whether connectionTree1 contains the exactly same node or bond
-     * (at ring closure node) properties as in connectionTree2 in a specific
-     * sphere.
-     *
-     * @param ssc1
-     * @param ssc2
-     * @param atomIndexInSubstructure1
-     * @param atomIndexInSubstructure2
-     * @param sphere
-     * @param shiftTol
-     * @return
-     */
-    public static boolean hasEqualNodesInSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) {
-        final ArrayList<ConnectionTreeNode> nodesInSphere1 = ssc1.getConnectionTree(atomIndexInSubstructure1).getNodesInSphere(sphere);
-        final ArrayList<ConnectionTreeNode> nodesInSphere2 = ssc2.getConnectionTree(atomIndexInSubstructure2).getNodesInSphere(sphere);
-        if (nodesInSphere1.size() != nodesInSphere2.size()) {
-            return false;
-        }
-        Signal signal1;
-        Signal signal2;
-        for (int j = 0; j < nodesInSphere1.size(); j++) {
-            signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodesInSphere1.get(j).getKey()));
-            signal2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodesInSphere2.get(j).getKey()));
-            if (!isEqualNode(nodesInSphere1.get(j), nodesInSphere2.get(j), signal1, signal2, shiftTol)) {
-                return false;
-            }
-        }
-        return true;
-    }
+//    /**
+//     * Checks whether connectionTree1 contains the exactly same node or bond
+//     * (at ring closure node) properties as in connectionTree2 in a specific
+//     * sphere.
+//     *
+//     * @param ssc1
+//     * @param ssc2
+//     * @param atomIndexInSubstructure1
+//     * @param atomIndexInSubstructure2
+//     * @param sphere
+//     * @param shiftTol
+//     * @return
+//     */
+//    public static boolean hasEqualNodesInSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final int sphere, final double shiftTol) {
+//        final ArrayList<ConnectionTreeNode> nodesInSphere1 = ssc1.getConnectionTree(atomIndexInSubstructure1).getNodesInSphere(sphere);
+//        final ArrayList<ConnectionTreeNode> nodesInSphere2 = ssc2.getConnectionTree(atomIndexInSubstructure2).getNodesInSphere(sphere);
+//        if (nodesInSphere1.size() != nodesInSphere2.size()) {
+//            return false;
+//        }
+//        Signal signal1;
+//        Signal signal2;
+//        for (int j = 0; j < nodesInSphere1.size(); j++) {
+//            signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodesInSphere1.get(j).getKey()));
+//            signal2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodesInSphere2.get(j).getKey()));
+//            if (!isEqualNode(nodesInSphere1.get(j), nodesInSphere2.get(j), signal1, signal2, shiftTol)) {
+//                return false;
+//            }
+//        }
+//        return true;
+//    }
 
     /**
      * Combines two 1D spectra while considering possible equivalent signals
-     * via the pickPrecision parameter and multiplicity comparison.
+     * via the {@code shiftTol} parameter and multiplicity comparison.
      * In {@code spectrum1}, the equivalent signals have to be set.
      *
      *
@@ -118,83 +106,10 @@ public class Match {
                     equivalentSignalIndex = closestSignalIndex;
                 }
             }
-            combinedSpectrum.addSignal(signalSpectrum2, equivalentSignalIndex);
+            combinedSpectrum.addSignal(signalSpectrum2.getClone(), equivalentSignalIndex);
         }
         return combinedSpectrum;
     }
-
-    //    /**
-    //     * Checks whether the exact same child nodes of a node1 in connectionTree1
-    //     * can be found at node2 in connectionTree2 in same next sphere and with
-    //     * same stored bond properties.
-    //     *
-    //     * @param connectionTree1
-    //     * @param connectionTree2
-    //     * @param node1
-    //     * @param node2
-    //     * @return
-    //     * @throws CloneNotSupportedException
-    //     */
-    //    public static boolean hasEqualChildNodesInNextSphere(final ConnectionTree connectionTree1, final ConnectionTree connectionTree2, final ConnectionTreeNode node1, final ConnectionTreeNode node2) throws CloneNotSupportedException{
-    //        // check whether all atoms from sphere in SSC1 were covered in SSC2
-    //        return Assembly.getRetainedChildNodesInNextSphere(connectionTree1, connectionTree2, node1, node2).isEmpty();
-    //    }
-    //
-    //    /**
-    //     * Returns the child nodes of node1 in connectionTree1 which can not be
-    //     * found as child nodes from node2 in connectionTree2.
-    //     *
-    //     * @param connectionTree1
-    //     * @param connectionTree2
-    //     * @param node1
-    //     * @param node2
-    //     * @return
-    //     * @throws CloneNotSupportedException
-    //     */
-    //    public static ArrayList<ConnectionTreeNode> getRetainedChildNodesInNextSphere(final ConnectionTree connectionTree1, final ConnectionTree connectionTree2, final ConnectionTreeNode node1, final ConnectionTreeNode node2) throws CloneNotSupportedException{
-    //        final ArrayList<ConnectionTreeNode> childNodesInNextSphere1 = new ArrayList<>(node1.getChildNodes());
-    //        final ArrayList<ConnectionTreeNode> childNodesInNextSphere2 = node2.getChildNodes();
-    //        final ArrayList<ConnectionTreeNode> childNodesInNextSphere1ToRemove = new ArrayList<>();
-    //        // remove all occurring child nodes in SSC2 from child nodes list in SSC1
-    //        for (final ConnectionTreeNode childNodeInNextSphere2 : childNodesInNextSphere2) {
-    //            if (childNodesInNextSphere1.isEmpty()) {
-    //                break;
-    //            }
-    //            childNodesInNextSphere1ToRemove.clear();
-    //            for (final ConnectionTreeNode childNodeInNextSphere1 : childNodesInNextSphere1) {
-    //                if(Assembly.isEqualNode(childNodeInNextSphere1, childNodeInNextSphere2)){
-    //                    childNodesInNextSphere1ToRemove.add(childNodeInNextSphere1);
-    //                }
-    //            }
-    //            childNodesInNextSphere1.removeAll(childNodesInNextSphere1ToRemove);
-    //        }
-    //
-    //        return childNodesInNextSphere1;
-    //    }
-    //
-    //
-    //    /**
-    //     * Returns the nodes in connectionTree1 which can not be
-    //     * found in connectionTree2 in the same sphere.
-    //     *
-    //     * @param connectionTree1
-    //     * @param connectionTree2
-    //     * @param sphere
-    //     * @return
-    //     * @throws CloneNotSupportedException
-    //     */
-    //    public static ArrayList<ConnectionTreeNode> getRetainedNodesInSphere(final ConnectionTree connectionTree1, final ConnectionTree connectionTree2, final int sphere) throws CloneNotSupportedException {
-    //        if(sphere > Integer.min(connectionTree1.getMaxSphere(), connectionTree2.getMaxSphere())){
-    //            return null;
-    //        }
-    //        final ArrayList<ConnectionTreeNode> retainedNodesInSphere = new ArrayList<>(connectionTree1.getNodesInSphere(sphere));
-    //        final ArrayList<ConnectionTreeNode> equalNodesInSphere = Assembly.getEqualNodesInSphere(connectionTree1, connectionTree2, sphere);
-    //        for (final ConnectionTreeNode equalNodeInSphere : equalNodesInSphere) {
-    //            retainedNodesInSphere.remove(equalNodeInSphere);
-    //        }
-    //
-    //        return retainedNodesInSphere;
-    //    }
     
     /**
      * Returns the nodes in connectionTree1 which can not be
@@ -244,13 +159,26 @@ public class Match {
      *
      * @see #getDeviations(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double) 
      */
-    public static Double getMatchFactor(final Double[] deviations) {
+    public static Double calculateMatchFactor(final Double[] deviations) {
         for (final Double deviation : deviations) {
             if (deviation == null) {
                 return null;
             }
         }
-        return Utils.getMean(deviations);
+        
+        return Utils.getMean(deviations);        
+    }
+    
+    public static Float calculateTanimotoCoefficient(final Spectrum spectrum1, final Spectrum spectrum2, final int dim) throws CDKException {
+        if(spectrum1.getSignalCount() != spectrum2.getSignalCount()){
+            return null;
+        }
+        final double[] shiftsSpectrum1 = ArrayUtils.toPrimitive(spectrum1.getShifts(dim).toArray(new Double[spectrum1.getSignalCount()]));
+        Arrays.parallelSort(shiftsSpectrum1);
+        final double[] shiftsSpectrum2 = ArrayUtils.toPrimitive(spectrum2.getShifts(dim).toArray(new Double[spectrum2.getSignalCount()]));
+        Arrays.parallelSort(shiftsSpectrum2);
+
+        return Tanimoto.calculate(shiftsSpectrum1, shiftsSpectrum2);
     }
 
     /**
@@ -260,28 +188,28 @@ public class Match {
      *
      * @param spectrum1
      * @param spectrum2
-     * @param pickPrecision Tolerance value [ppm] used during peak picking in
+     * @param shiftTol Tolerance value [ppm] used during peak picking in
      * shift comparison
      * @return
      *
      * @see #getDeviations(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double)
-     * @see #getMatchFactor(java.lang.Double[]) 
+     * @see #calculateMatchFactor(java.lang.Double[]) 
      */
-    public static Double getMatchFactor(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
-        return Match.getMatchFactor(Match.getDeviations(spectrum1, spectrum2, pickPrecision));
+    public static Double calculateMatchFactor(final Spectrum spectrum1, final Spectrum spectrum2, final double shiftTol) {
+        return Match.calculateMatchFactor(Match.getDeviations(spectrum1, spectrum2, shiftTol));
     }
 
-    public static int getMaximumMatchingSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final double shiftTol) throws CloneNotSupportedException {
-        int maxMatchingSphere = -1;
-        for (int s = 0; s <= Integer.min(ssc1.getConnectionTree(atomIndexInSubstructure1).getMaxSphere(), ssc2.getConnectionTree(atomIndexInSubstructure2).getMaxSphere()); s++) {
-            //            if(!Assembly.hasStructuralIdentity(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, s, shiftTol)){
-            if (!Match.hasEqualNodesInSphere(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, s, shiftTol)) {
-                break;
-            }
-            maxMatchingSphere = s;
-        }
-        return maxMatchingSphere;
-    }
+//    public static int getMaximumMatchingSphere(final SSC ssc1, final SSC ssc2, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2, final double shiftTol) throws CloneNotSupportedException {
+//        int maxMatchingSphere = -1;
+//        for (int s = 0; s <= Integer.min(ssc1.getConnectionTree(atomIndexInSubstructure1).getMaxSphere(), ssc2.getConnectionTree(atomIndexInSubstructure2).getMaxSphere()); s++) {
+//            //            if(!Assembly.hasStructuralIdentity(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, s, shiftTol)){
+//            if (!Match.hasEqualNodesInSphere(ssc1, ssc2, atomIndexInSubstructure1, atomIndexInSubstructure2, s, shiftTol)) {
+//                break;
+//            }
+//            maxMatchingSphere = s;
+//        }
+//        return maxMatchingSphere;
+//    }
 
     /**
      * Returns deviatons between matched shifts in SSC and query query spectrum.
@@ -289,14 +217,14 @@ public class Match {
      *
      * @param spectrum1
      * @param spectrum2
-     * @param pickPrecision
+     * @param shiftTol
      * @return
      *
      * @see #matchSpectra(casekit.NMR.model.Spectrum, casekit.NMR.model.Spectrum, double)
      */
-    public static Double[] getDeviations(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
+    public static Double[] getDeviations(final Spectrum spectrum1, final Spectrum spectrum2, final double shiftTol) {
         final Double[] deviations = new Double[spectrum1.getSignalCount()];
-        final Assignment matchAssignments = Match.matchSpectra(spectrum1, spectrum2, pickPrecision);
+        final Assignment matchAssignments = Match.matchSpectra(spectrum1, spectrum2, shiftTol);
         Signal matchedSignalInSpectrum2;
         for (int i = 0; i < spectrum1.getSignalCount(); i++) {
             if (matchAssignments.getAtomIndex(0, i) == -1) {
@@ -316,13 +244,13 @@ public class Match {
      *
      * @param spectrum1
      * @param spectrum2
-     * @param pickPrecision Tolerance value [ppm] used during spectra shift 
+     * @param shiftTol Tolerance value [ppm] used during spectra shift 
      * comparison
      * @return Assignments with signal indices of spectrum1 and matched indices
      * in spectrum2; assignments are unset (-1) if spectrum1 has a different nucleus
      * than spectrum2
      */
-    public static Assignment matchSpectra(final Spectrum spectrum1, final Spectrum spectrum2, final double pickPrecision) {
+    public static Assignment matchSpectra(final Spectrum spectrum1, final Spectrum spectrum2, final double shiftTol) {
         final Assignment matchAssignments = new Assignment(spectrum1);
         // first nuclei in both spectra are not the same
         if (!spectrum1.getNuclei()[0].equals(spectrum2.getNuclei()[0])) {
@@ -335,7 +263,7 @@ public class Match {
             if (spectrum1.getShift(i, 0) == null) {
                 pickedSignalIndexSpectrum2 = -1;
             } else {
-                pickedSignalIndexSpectrum2 = spectrum2.pickClosestSignal(spectrum1.getShift(i, 0), 0, pickPrecision);
+                pickedSignalIndexSpectrum2 = spectrum2.pickClosestSignal(spectrum1.getShift(i, 0), 0, shiftTol);
                 // if matched signal is already assigned, then consider symmetries (equiv. signals)
                 if (pickedSignalIndices.contains(pickedSignalIndexSpectrum2)) {
                     // symmetry exists
@@ -376,7 +304,7 @@ public class Match {
         //        for (int i = 0; i < matchAssignments.getAssignmentsCount(); i++) {
         //            final Double queryShiftSpectrum1 = spectrum1.getShift(i, 0);
         //            if ((matchAssignments.getAtomIndex(0, i) == -1) && (queryShiftSpectrum1 != null)) {
-        //                pickedSignalIndicesInSpectrum2 = spectrum2.pickSignals(queryShiftSpectrum1, 0, pickPrecision);
+        //                pickedSignalIndicesInSpectrum2 = spectrum2.pickSignals(queryShiftSpectrum1, 0, shiftTol);
         //                for (final int pickedSignalIndexInSpectrum2 : pickedSignalIndicesInSpectrum2) {
         //                    if (!pickedSignalIndices.contains(pickedSignalIndexInSpectrum2)
         //                            && (spectrum1.getMultiplicity(i) != null)
@@ -411,7 +339,10 @@ public class Match {
         final ConnectionTreeNode parentNode1;
         final ConnectionTreeNode parentNode2;
         if ((atom1 != null) && (atom2 != null) && !nodeInSphere1.isRingClosureNode() && !nodeInSphere2.isRingClosureNode()) {
-            if (atom1.getSymbol().equals(atom2.getSymbol()) && (Integer.compare(atom1.getImplicitHydrogenCount(), atom2.getImplicitHydrogenCount()) == 0)){// && atom1.isAromatic() == atom2.isAromatic() && atom1.isInRing() == atom2.isInRing()) {
+            if (atom1.getSymbol().equals(atom2.getSymbol()) && (Integer.compare(atom1.getImplicitHydrogenCount(), atom2.getImplicitHydrogenCount()) == 0) 
+                    && (atom1.isAromatic() == atom2.isAromatic()) && (atom1.isInRing() == atom2.isInRing())
+                    ) {
+                
                 if ((signal1 != null) && (signal2 != null) && ((Math.abs(signal1.getShift(0) - signal2.getShift(0)) > shiftTol) || !signal1.getMultiplicity().equals(signal2.getMultiplicity()))) {                    
                     return false;
                 }
@@ -431,15 +362,44 @@ public class Match {
                 //                }
             }
         } else if (nodeInSphere1.isRingClosureNode() && nodeInSphere2.isRingClosureNode()) {
-            parentNode1 = nodeInSphere1.getParentNodes().get(0);
-            parentNode2 = nodeInSphere2.getParentNodes().get(0);
-            bondToParent1 = nodeInSphere1.getBondsToParents().get(0);
-            bondToParent2 = nodeInSphere2.getBondsToParents().get(0);
-            if (parentNode1.getAtom().getSymbol().equals(parentNode2.getAtom().getSymbol()) && bondToParent1.getOrder() == bondToParent2.getOrder() && bondToParent1.isAromatic() == bondToParent2.isAromatic() && bondToParent1.isInRing() == bondToParent2.isInRing()) {
+//            parentNode1 = nodeInSphere1.getParentNodes().get(0);
+//            parentNode2 = nodeInSphere2.getParentNodes().get(0);
+//            bondToParent1 = nodeInSphere1.getBondsToParents().get(0);
+//            bondToParent2 = nodeInSphere2.getBondsToParents().get(0);
+//            if (parentNode1.getAtom().getSymbol().equals(parentNode2.getAtom().getSymbol()) 
+//                    && (bondToParent1.getOrder() == bondToParent2.getOrder()) 
+//                    && (bondToParent1.isAromatic() == bondToParent2.isAromatic()) 
+//                    && (bondToParent1.isInRing() == bondToParent2.isInRing())) {
                 return true;
-            }
+//            }
         }
         return false;
+    }
+
+    /**
+     *
+     * @param ssc1
+     * @param ssc2
+     * @param rootAtomIndexSSC1
+     * @param rootAtomIndexSSC2
+     * @return
+     * @throws org.openscience.cdk.exception.CDKException
+     */
+    public static int getMaximumMatchingSphereHOSECode(final SSC ssc1, final SSC ssc2, final int rootAtomIndexSSC1, final int rootAtomIndexSSC2) throws CDKException {
+        int maxMatchingSphere = -1;
+        String HOSECodeSSC1;
+        String HOSECodeSSC2;
+        for (int s = 0; s <= Integer.min(ssc1.getMaxSphere(), ssc2.getMaxSphere()); s++) {
+            HOSECodeSSC1 = HOSECodeBuilder.buildHOSECode(ssc1.getSubstructure(), rootAtomIndexSSC1, s, false);
+            HOSECodeSSC2 = HOSECodeBuilder.buildHOSECode(ssc2.getSubstructure(), rootAtomIndexSSC2, s, false);
+            System.out.println(" --> in s: " + s + " -> " + HOSECodeSSC1 + " vs. " + HOSECodeSSC2);
+            if (!HOSECodeSSC1.equals(HOSECodeSSC2)) {
+                break;
+            }
+            maxMatchingSphere = s;
+            System.out.println(" --> in s: " + s + " -> " + HOSECodeSSC1 + " vs. " + HOSECodeSSC2);
+        }
+        return maxMatchingSphere;
     }
 
     
