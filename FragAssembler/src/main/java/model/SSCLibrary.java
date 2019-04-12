@@ -23,16 +23,15 @@
  */
 package model;
 
+import hose.HOSECodeBuilder;
 import casekit.NMR.DB;
 import casekit.NMR.Utils;
+import casekit.NMR.model.Signal;
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.google.gson.stream.JsonWriter;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.util.JSON;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
@@ -46,19 +45,14 @@ import java.util.HashSet;
 import org.openscience.cdk.exception.CDKException;
 import fragmentation.Fragmentation;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
 import org.bson.Document;
-import org.json.simple.parser.ParseException;
 
 /**
  * Class to search for matches between a SSC library and query spectra.
@@ -67,8 +61,9 @@ import org.json.simple.parser.ParseException;
  */
 public final class SSCLibrary {
 
-    private final HashMap<Long, SSC> map;
-    private final HashMap<String, ArrayList<Double>> HOSECodeLookupTable;
+    private final LinkedHashMap<Long, SSC> map;
+    private final HashMap<String, ArrayList<Double>> HOSECodeLookupTableShifts;
+    private final HashMap<String, ArrayList<Long>> HOSECodeLookupTableSSCIndices;    
     private int nThreads;
     
     /**
@@ -85,41 +80,144 @@ public final class SSCLibrary {
      * @param nThreads number of threads to use for parallelization
      */
     public SSCLibrary(final int nThreads){
-        this.map = new HashMap<>();
-        this.HOSECodeLookupTable = new HashMap<>();
+        this.map = new LinkedHashMap<>();
+        this.HOSECodeLookupTableShifts = new HashMap<>();
+        this.HOSECodeLookupTableSSCIndices = new HashMap<>();
         this.nThreads = nThreads;
     }
     
     /**
-     * Creates a lookup table for generated HOSE codes regarding the given 
-     * SSC library. Each HOSE code entry contains a list of belonging shift 
-     * values. 
+     * Creates/Updates lookup tables for generated HOSE codes regarding the 
+     * given SSC library. 
      *
      * @throws java.lang.InterruptedException
+     * 
+     * @see #getHOSECodeLookupTableSSCIndices()
+     * @see #getHOSECodeLookupTableShifts() 
      */
-    public void buildHOSELookupTable() throws InterruptedException {  
-        this.HOSECodeLookupTable.clear();
+    public void buildHOSELookupTables() throws InterruptedException {  
+        this.HOSECodeLookupTableShifts.clear();
+        this.HOSECodeLookupTableSSCIndices.clear();
+        String HOSECode;
+        Signal signal; 
         for (final SSC ssc : this.map.values()) {
             if(ssc != null){
-                Utils.combineHashMaps(this.HOSECodeLookupTable, ssc.getHOSECodeLookupShifts());                          
+//                Utils.combineHashMaps(this.HOSECodeLookupTableShifts, ssc.getHOSECodeLookupShifts());   
+//                for (int i = 0; i < ssc.getAtomCount(); i++) {
+//                    if(!this.HOSECodeLookupTableSSCIndices.containsKey(ssc.getHOSECode(i))){
+//                        this.HOSECodeLookupTableSSCIndices.put(ssc.getHOSECode(i), new ArrayList<>());
+//                    }
+//                    this.HOSECodeLookupTableSSCIndices.get(ssc.getHOSECode(i)).add(ssc.getIndex());
+//                }
+                HOSECode = ssc.getHOSECode(ssc.getRootAtomIndex());
+                if (!this.HOSECodeLookupTableSSCIndices.containsKey(HOSECode)) {
+                    this.HOSECodeLookupTableSSCIndices.put(HOSECode, new ArrayList<>());
+                    this.HOSECodeLookupTableShifts.put(HOSECode, new ArrayList<>());
+                }
+                this.HOSECodeLookupTableSSCIndices.get(HOSECode).add(ssc.getIndex());
+                signal = ssc.getSubspectrum().getSignal(ssc.getAssignments().getSignalIndex(0, ssc.getRootAtomIndex()));
+                if(signal != null){
+                    this.HOSECodeLookupTableShifts.get(HOSECode).add(signal.getShift(0));
+                }                
             }            
         }
     }
     
     /**
-     * Returns a HashMap of the shift lists in HOSE code lookup table. 
+     * Returns a HashMap of the shifts for each HOSE code of that SSC 
+     * library. 
      * Before usage of this method, the HOSE code lookup table has to been 
-     * built via {@link #buildHOSELookupTable() }.
+     * built via {@link #buildHOSELookupTables()}.
      *
      * @return HashMap with HOSE codes as keys and lists of chemical shifts as
      * values
      *
-     * @see #buildHOSELookupTable() 
+     * @see #buildHOSELookupTables() 
      */
-    public HashMap<String, ArrayList<Double>> getHOSECodeLookupTable() {
-        return this.HOSECodeLookupTable;
+    public HashMap<String, ArrayList<Double>> getHOSECodeLookupTableShifts() {
+        return this.HOSECodeLookupTableShifts;
     }
-     
+    
+    /**
+     * Builds both HOSE code lookup tables of this SSC library containing a list 
+     * of shifts as well as a list of SSC indices for each HOSE code. 
+     * Then it will be exported into a given MongoDB collection.      
+     *
+     * @param collection MongoDB collection to store in
+     * @throws java.lang.InterruptedException 
+     *
+     * @see #buildHOSELookupTables() 
+     */
+    public void exportHOSECodeLookupTable(final MongoCollection<Document> collection) throws InterruptedException {
+        
+        this.buildHOSELookupTables();
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<Document>> callables = new ArrayList<>();
+        // add all task to do
+        for (final String HOSECode : this.HOSECodeLookupTableShifts.keySet()) {
+            callables.add((Callable<Document>) () -> {
+                final Document document = new Document();  
+                final ArrayList<Double> shifts = this.HOSECodeLookupTableShifts.get(HOSECode);
+                document.append("HOSECode", HOSECode);
+                document.append("spheres", HOSECodeBuilder.getSpheresCount(HOSECode));
+                final Document documentShifts = new Document();
+                documentShifts.append("count", shifts.size());
+                documentShifts.append("min", (shifts.size() > 0) ? Collections.min(shifts) : null);
+                documentShifts.append("max", (shifts.size() > 0) ? Collections.max(shifts) : null);
+                documentShifts.append("rms", Utils.getRMS(shifts));
+                documentShifts.append("mean", Utils.getMean(shifts));
+                documentShifts.append("median", Utils.getMedian(shifts));
+                documentShifts.append("var", Utils.getVariance(shifts));
+                documentShifts.append("sd", Utils.getStandardDeviation(shifts));
+                documentShifts.append("shifts", shifts);
+                final Document documentSSCIndices = new Document();
+                documentSSCIndices.append("count", this.HOSECodeLookupTableSSCIndices.size());
+                documentSSCIndices.append("indices", this.HOSECodeLookupTableSSCIndices.get(HOSECode));
+                
+                document.append("shift", documentShifts);
+                document.append("ssc", documentSSCIndices);
+
+                return document;
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((document) -> {
+                    try {
+                        collection.insertOne(document);
+                    } catch (Exception e) {
+                        System.err.println("export for key \"" + document.get("_id") + "\" failed: " + e.getMessage());
+                        System.out.println("-> document: \n" + document.toJson());
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);        
+    }
+    
+    /**
+     * Returns a HashMap of the SSC indices for each HOSE code of that SSC 
+     * library. 
+     * Before usage of this method, the HOSE code lookup table has to been 
+     * built via {@link #buildHOSELookupTables()}.
+     *
+     * @return HashMap with HOSE codes as keys and lists of SSC indices as
+     * values
+     *
+     * @see #buildHOSELookupTables() 
+     */
+    public HashMap<String, ArrayList<Long>> getHOSECodeLookupTableSSCIndices() {
+        return this.HOSECodeLookupTableSSCIndices;
+    }
+    
     public int getNThreads(){
         return this.nThreads;
     }
@@ -146,7 +244,6 @@ public final class SSCLibrary {
      * @throws java.lang.InterruptedException
      */
     public void exportToMongoDB(final MongoCollection<Document> collection) throws InterruptedException{
-        final Gson gson = new Gson();
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<Document>> callables = new ArrayList<>();
@@ -154,12 +251,8 @@ public final class SSCLibrary {
         long sscCounter = 0;
         for (final SSC ssc : this.getSSCs()) {
             final long sscCounterCopy = sscCounter;
-            callables.add((Callable<Document>) () -> {
-                final Document document = new Document();     
-                ssc.setIndex(sscCounterCopy);
-                document.append("_id", ssc.getIndex());
-                document.append("ssc", JSON.parse(gson.toJson(gson.toJsonTree(new SSCInJSON(ssc), SSCInJSON.class))));
-                return document;
+            callables.add((Callable<Document>) () -> {                        
+                return SSCConverter.SSCToDocument(ssc, sscCounterCopy);
             });
             sscCounter++;
         }
@@ -187,17 +280,18 @@ public final class SSCLibrary {
     }
     
     public void exportToJSONFile(final String pathToJSON) throws IOException, InterruptedException {                        
-        final Gson gson = new Gson();//Builder().setPrettyPrinting().create();
         final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToJSON));
-        final JsonObject jsonObject = new JsonObject();           
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<JsonElement>> callables = new ArrayList<>();
+        final ArrayList<Callable<Document>> callables = new ArrayList<>();
         // add all task to do
-        for (final long sscIndex : this.map.keySet()) {
-            callables.add((Callable<JsonElement>) () -> {
-                return gson.toJsonTree(new SSCInJSON(this.map.get(sscIndex)), SSCInJSON.class);
+        long sscCounter = 0;
+        for (final SSC ssc : this.getSSCs()) {
+            final long sscCounterCopy = sscCounter;
+            callables.add((Callable<Document>) () -> {                        
+                return SSCConverter.SSCToDocument(ssc, sscCounterCopy);
             });
+            sscCounter++;
         }
         // execute all task in parallel
         executor.invokeAll(callables)
@@ -209,16 +303,18 @@ public final class SSCLibrary {
                         throw new IllegalStateException(e);
                     }
                 })
-                .forEach((jsonElement) -> {
-                    if (jsonElement != null) {
-//                        System.out.println("index: " + jsonElement.getAsJsonObject().get("index").toString());
-                        jsonObject.add(jsonElement.getAsJsonObject().get("index").toString(), jsonElement);
+                .forEach((document) -> {                  
+                    try {
+                        bw.write(document.toJson());
+                        bw.newLine();
+                        bw.flush();
+                    } catch (IOException ex) {
+                        Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
                     }
                 });
         // shut down the executor service
         Utils.stopExecuter(executor, 5);
         
-        gson.toJson(jsonObject, new JsonWriter(bw));
         bw.close();
     }
     
@@ -289,15 +385,14 @@ public final class SSCLibrary {
     /**
      * Creates a SSC library from a given NMRShiftDB SDF via fragmentation of
      * each structure and each of its atoms as individual starting point 
-     * (central atom). All current SSCs will be deleted.
+     * (central atom).All current SSCs will be deleted.
      *
      * @param pathToNMRShiftDB path to NMRShiftDB SDF
      * @param property property string of spectrum to use, 
      * e.g. "Spectrum 13C 0"
-     * @param atomType atom type of spectrum to use, e.g. "C"
      * @param maxSphere maximum number of spheres in fragmention
-     * @param offset offset number for next SSC indices to use as keys in SSC 
-     * library
+     * @param offset offset number for next SSC indices to use as keys in SSC
+     * 
      * @throws FileNotFoundException
      * @throws CDKException
      * @throws CloneNotSupportedException
@@ -306,21 +401,55 @@ public final class SSCLibrary {
      * @see #removeAll() 
      * @see #extend(java.lang.String, java.lang.String, java.lang.String, int, int)  
      */
-    public void importFromNMRShiftDB(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException {
+    public void importFromNMRShiftDB(final String pathToNMRShiftDB, final String property, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException {
         this.removeAll();
-        this.extend(pathToNMRShiftDB, property, atomType, maxSphere, offset);
+        this.extend(pathToNMRShiftDB, property, maxSphere, offset);
     }
     
     /**
-     * Extends this SSC library by a given second one. All SSCs in this 
-     * library object whose indices also exist in the given SSC library will be 
-     * replaced.
+     * Extends this SSC library by a given second one. If a SSC in the given 
+     * SSC library exists which index also exists in this SSC library then an 
+     * exception will be thrown.
      *
-     * @param sscLibrary second SSC library to add
+     * @param sscLibrary SSC library to add to this library
+     * @throws java.lang.InterruptedException
      * @see #containsSSC(int) 
      */
-    public void extend(final SSCLibrary sscLibrary){
-        this.map.putAll(sscLibrary.getMap());
+    public void extend(final SSCLibrary sscLibrary) throws InterruptedException{
+//        this.map.putAll(sscLibrary.getMap());
+        
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
+        // add all task to do
+        for (final SSC ssc : sscLibrary.getSSCs()) {
+            callables.add((Callable<SSC>) () -> {
+                return ssc;
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((ssc) -> {
+                    if (ssc != null) {
+                        if (!this.insert(ssc)) {
+                            try {
+                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
+                            } catch (CDKException ex) {
+                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
     }
     
     /**
@@ -337,14 +466,13 @@ public final class SSCLibrary {
      * @see #containsSSC(int)
      */
     public void extend(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
-        final Gson gson = new Gson();        
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
-        for (final Document sscDocDB : collection.find()) {
-            callables.add((Callable<SSC>) () -> {
-                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
+        for (final Document sscDocument : collection.find()) {
+            callables.add((Callable<SSC>) () -> {                
+                return SSCConverter.DocumentToSSC(sscDocument);
             });
         }
         // execute all task in parallel
@@ -387,14 +515,13 @@ public final class SSCLibrary {
      * @see #containsSSC(int)
      */
     public void extend(final FindIterable<Document> queryResult) throws CDKException, CloneNotSupportedException, InterruptedException  {
-        final Gson gson = new Gson();        
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
-        for (final Document sscDocDB : queryResult) {
+        for (final Document sscDocument : queryResult) {
             callables.add((Callable<SSC>) () -> {
-                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
+                return SSCConverter.DocumentToSSC(sscDocument);
             });
         }
         // execute all task in parallel
@@ -437,14 +564,13 @@ public final class SSCLibrary {
      * @see #containsSSC(int)
      */
     public void extend(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
-        final Gson gson = new Gson();        
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
-        for (final Document sscDocDB : documents) {
+        for (final Document sscDocument : documents) {
             callables.add((Callable<SSC>) () -> {
-                return gson.fromJson(((Document) sscDocDB.get("ssc")).toJson(), SSCInJSON.class).toSSC();
+                return SSCConverter.DocumentToSSC(sscDocument);
             });
         }
         // execute all task in parallel
@@ -473,14 +599,12 @@ public final class SSCLibrary {
     }
     
     /**
-     * Extends this SSC library by created SSCs from a NMRShiftDB file. 
-     * All SSCs in this library object whose indices also exist in the 
-     * given map will be replaced.
+     * Extends this SSC library by created SSCs from a NMRShiftDB file.All SSCs in this library object whose indices also exist in the 
+ given map will be replaced.
      *
      * @param pathToNMRShiftDB path to NMRShiftDB SDF
      * @param property property string of spectrum to use, 
      * e.g. "Spectrum 13C 0"
-     * @param atomType atom type of spectrum to use, e.g. "C"
      * @param maxSphere maximum number of spheres in fragmention
      * @param offset offset number for next SSC indices to use as keys in SSC 
      * library
@@ -492,9 +616,8 @@ public final class SSCLibrary {
      * @see Fragmentation#buildSSCLibrary(java.util.HashMap, int, int, int)  
      * @see #containsSSC(int) 
      */
-    public void extend(final String pathToNMRShiftDB, final String property, final String atomType, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
-        final HashMap<Integer, Object[]> SSCComponentsSet = DB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property, atomType);
-        this.extend(Fragmentation.buildSSCLibrary(SSCComponentsSet, maxSphere, this.nThreads, offset));
+    public void extend(final String pathToNMRShiftDB, final String property, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
+        this.extend(Fragmentation.buildSSCLibrary(DB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), maxSphere, this.nThreads, offset));
     }
     
     /**
@@ -521,7 +644,7 @@ public final class SSCLibrary {
         // add all task to do
         for (final String sscIndex: jsonObject.keySet()) {
             callables.add((Callable<SSC>) () -> {
-                return gson.fromJson(jsonObject.get(sscIndex), SSCInJSON.class).toSSC();
+                return SSCConverter.JsonObjectToSSC(jsonObject.getAsJsonObject(sscIndex));
             });
         }
         // execute all task in parallel
@@ -551,7 +674,70 @@ public final class SSCLibrary {
         
     }
     
-    public int getSSCCount(){
+    public void removeDuplicates() throws InterruptedException {  
+        // build/update HOSE code lookup tables, i.e. the one with SSC indices
+        this.buildHOSELookupTables();
+        
+        final HashSet<Long> duplicatesSSCIndices = new HashSet<>();   
+        SSC ssc1, ssc2;
+        long sscIndex1, sscIndex2;
+        ConnectionTree connectionTreeSSC1;
+        boolean isDuplicate;
+        for (final String HOSECode : this.getHOSECodeLookupTableSSCIndices().keySet()) {
+            for (int i = 0; i < this.getHOSECodeLookupTableSSCIndices().get(HOSECode).size(); i++) {
+                sscIndex1 = this.getHOSECodeLookupTableSSCIndices().get(HOSECode).get(i);
+                ssc1 = this.getSSC(sscIndex1);
+                connectionTreeSSC1 = ssc1.getConnectionTree(ssc1.getRootAtomIndex());                
+                for (int j = i + 1; j < this.getHOSECodeLookupTableSSCIndices().get(HOSECode).size(); j++) {
+                    sscIndex2 = this.getHOSECodeLookupTableSSCIndices().get(HOSECode).get(j);
+                    ssc2 = this.getSSC(sscIndex2);
+                    isDuplicate = true;
+                    // check for same hydrogen count in last sphere, because there it could be different
+                    for (final int nodeKey : connectionTreeSSC1.getNodeKeysInSphere(connectionTreeSSC1.getMaxSphere())) {
+                        if(connectionTreeSSC1.getNode(nodeKey).isRingClosureNode()){
+                            continue;
+                        }
+                        if(ssc1.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount() != ssc2.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount()){
+                            isDuplicate = false;
+                            break;
+                        }
+                    }
+                    if(isDuplicate){
+                        duplicatesSSCIndices.add(sscIndex2);
+                    }
+                }
+            }
+        }
+        System.out.println("to remove: " + duplicatesSSCIndices);
+        // remove all duplicates
+        for (final long duplicatesSSCIndex : duplicatesSSCIndices) {            
+            this.remove(duplicatesSSCIndex);
+        }
+        // update lookup tables
+        this.buildHOSELookupTables();
+    }
+    
+    public boolean isEmpty(){
+        return this.getSSCCount() == 0;
+    }
+    
+    /**
+     * Returns the last (numerical highest) SSC index of this SSC library. 
+     * If this SSC library is empty then null will be returned.
+     *
+     * @return
+     * 
+     * @see #isEmpty() 
+     */
+    public Long getLastSSCIndex(){
+        if(this.isEmpty()){
+            return null;
+        }
+        
+        return Collections.max(this.getSSCIndices());
+    }
+    
+    public long getSSCCount(){
         return this.map.size();
     }
     
@@ -567,10 +753,21 @@ public final class SSCLibrary {
         return this.map;
     }
     
-    public HashSet<Long> getSSCIndices(){
-        return new HashSet<>(this.map.keySet());
+    /**
+     * Returns the SSC indices of this SSC library.
+     *
+     * @return
+     */
+    public LinkedHashSet<Long> getSSCIndices(){
+        return new LinkedHashSet<>(this.map.keySet());
     }
     
+    /**
+     * Returns the SSCs of this SSC library in same order as the SSCs 
+     * were inserted.
+     *
+     * @return
+     */
     public Collection<SSC> getSSCs(){
         return this.map.values();
     } 
@@ -579,7 +776,7 @@ public final class SSCLibrary {
      * Inserts a new SSC to this SSC library.
      *
      * @param ssc SSC to add to this library
-     * @return false if this SSC library already contains the index of {@code ssc} 
+     * @return false if this SSC library already contains {@code ssc.getIndex()} 
      * or {@code ssc.getIndex() < 0}; otherwise true
      */
     public boolean insert(final SSC ssc) {
@@ -592,134 +789,35 @@ public final class SSCLibrary {
     }
     
     public boolean remove(final long sscIndex){
-        if(this.containsSSC(sscIndex)){
+        if(!this.containsSSC(sscIndex)){
             return false;
         }
-        this.map.remove(sscIndex);
         
-        return true;
+        return this.map.remove(sscIndex, this.getSSC(sscIndex));
     }
     
-    public SSCLibrary getClone() throws CDKException, CloneNotSupportedException {
-        final SSCLibrary sscLibrary = new SSCLibrary();
-        sscLibrary.extend(this);
+    /**
+     * Returns a deep clone if this SSC library and its SSCs object. The set number of threads is 
+     * set too.
+     *
+     * @return
+     * @throws CDKException
+     * @throws CloneNotSupportedException
+     * @throws InterruptedException
+     * 
+     * @see #setNThreads(int) 
+     */
+    public SSCLibrary getClone() throws CDKException, CloneNotSupportedException, InterruptedException {
+        final SSCLibrary sscLibrary = new SSCLibrary(this.nThreads);
+        for (final long sscIndex : this.map.keySet()) {
+            sscLibrary.insert(this.getSSC(sscIndex).getClone());
+        }
         
         return sscLibrary;
     } 
     
     public void removeAll(){
         this.map.clear();
-    }
-    
-    // ################################
-    
-    public static void main(String[] args) {
-        final SSCLibrary sscLibrary = new SSCLibrary();
-        try {
-            final Object[] argValues = sscLibrary.parseArgs(args);
-            final String pathToNMRShiftDB = (String) argValues[0];
-            final String pathToJSON = (String) argValues[1];            
-            final int maxsphere = Integer.parseInt((String) argValues[2]);
-            final int nthreads = Integer.parseInt((String) argValues[3]);
-            final int offset = Integer.parseInt((String) argValues[4]);
-            final String property = (String) argValues[5];
-            final String atomType = (String) argValues[6];
-            System.out.println("-> importing from: " + pathToNMRShiftDB + " ...");
-            sscLibrary.setNThreads(nthreads);
-            sscLibrary.importFromNMRShiftDB(pathToNMRShiftDB, property, atomType, maxsphere, offset);
-            System.out.println(" -> imported! -> #SSC: " + sscLibrary.getSSCCount() + ", next offset: " + (Collections.max(sscLibrary.getSSCIndices()) + 1));
-            System.out.println("-> exporting to: " + pathToJSON + " ...");
-            sscLibrary.exportToJSONFile(pathToJSON);
-            System.out.println(" -> exported!!!");
-            
-            
-        } catch (IOException | CloneNotSupportedException | InterruptedException | org.apache.commons.cli.ParseException | ParseException | CDKException e) {
-            System.err.println(e.getMessage());
-        }
-    }
-    
-    
-    private Object[] parseArgs(String[] args) throws ParseException, org.apache.commons.cli.ParseException {
-        final Options options = setupOptions();
-        final CommandLineParser parser = new DefaultParser();
-        final Object[] argValues = new Object[options.getOptions().size()];
-        try {
-            final CommandLine cmd = parser.parse(options, args);
-            argValues[0] = cmd.getOptionValue("nmrshiftdb");
-            argValues[1] = cmd.getOptionValue("library");
-            argValues[2] = cmd.getOptionValue("maxsphere");            
-            argValues[3] = cmd.getOptionValue("nthreads", "1");            
-            argValues[4] = cmd.getOptionValue("offset", "0");            
-            argValues[5] = cmd.getOptionValue("property", "Spectrum 13C 0");            
-            argValues[6] = cmd.getOptionValue("atomtype", "C");            
-
-        } catch (org.apache.commons.cli.ParseException e) {
-            // TODO Auto-generated catch block
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.setOptionComparator(null);
-            String header = "Space for a header.\n\n";
-            String footer = "\nSpace for a footer.";
-            formatter.printHelp("java -jar something", header, options, footer, true);
-            throw new org.apache.commons.cli.ParseException("Problem parsing command line");
-        }
-        
-        return argValues;
-    }
-
-    private Options setupOptions() {
-        Options options = new Options();
-        Option nmrshiftdb = Option.builder("db")
-                .required(true)
-                .hasArg()
-                .longOpt("nmrshiftdb")
-                .desc("path to NMRShiftDB sdf (required)")
-                .build();
-        options.addOption(nmrshiftdb);
-        Option jsonLibrary = Option.builder("lib")
-                .required(true)
-                .hasArg()
-                .longOpt("library")
-                .desc("path to SSC Library as JSON file (required)")
-                .build();
-        options.addOption(jsonLibrary);
-        Option maxsphere = Option.builder("m")
-                .required(true)
-                .hasArg()
-                .longOpt("maxsphere")
-                .desc("maximum sphere limit for SSC library fragments (required)")
-                .build();
-        options.addOption(maxsphere);
-        Option nthreads = Option.builder("n")
-                .required(false)
-                .hasArg()
-                .longOpt("nthreads")
-                .desc("number of threads to use for parallelization (optional); this is set to \"1\" by default")
-                .build();
-        options.addOption(nthreads);
-        Option offset = Option.builder("o")
-                .required(false)
-                .hasArg()
-                .longOpt("offset")
-                .desc("offset value for SSC indexing (optional); this is set to \"0\" by default")
-                .build();
-        options.addOption(offset);
-        Option property = Option.builder("p")
-                .required(false)
-                .hasArg()
-                .longOpt("property")
-                .desc("property string for spectrum to use in NMRShiftDB (optional); this is set to \"Spectrum 13C 0\" by default")
-                .build();
-        options.addOption(property);
-        Option atomType = Option.builder("t")
-                .required(false)
-                .hasArg()
-                .longOpt("atomtype")
-                .desc("atom type (element symbol) for spectrum to use in NMRShiftDB (optional); this is set to \"C\" by default")
-                .build();
-        options.addOption(atomType);
-
-        return options;
-    }
-
+    }    
 
 }
