@@ -23,14 +23,13 @@
  */
 package model;
 
-import fragmentation.HOSECodeBuilder;
+import hose.HOSECodeBuilder;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
@@ -54,7 +53,7 @@ public final class SSC {
     // stores all atom indices for each single HOSE code
     private final HashMap<String, ArrayList<Integer>> HOSECodeLookupIndices;
     // connection tree holding the spherical information about the substructure
-    private final HashMap<Integer, ConnectionTree> connectionTrees;
+    private final HashMap<Integer, ConnectionTree> connectionTrees;    
     // stores all atom indices for each occurring atom type in substructure    
     private HashMap<String, ArrayList<Integer>> atomTypeIndices;
     // for pre-search: map of multiplicities as keys consisting 
@@ -101,7 +100,7 @@ public final class SSC {
      * @throws CDKException
      * @throws java.lang.CloneNotSupportedException
      */
-    public SSC getClone() throws CDKException, CloneNotSupportedException {
+    public SSC getClone() throws CDKException, CloneNotSupportedException {        
       return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere);
     }
     
@@ -117,7 +116,7 @@ public final class SSC {
     public void update() throws CDKException {
         AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(this.substructure);
         this.updateAtomTypeIndices();        
-        this.updateUnsaturatedAtomIndices();                 
+        this.updateUnsaturatedAtomIndices();   
         this.updateHOSECodes();
         this.updateMultiplicitySections(); 
     }
@@ -175,7 +174,7 @@ public final class SSC {
         this.unsaturatedAtomIndices.clear();
         for (int i = 0; i < this.substructure.getAtomCount(); i++) {
             // set the indices of unsaturated atoms in substructure
-            if (!Utils.isSaturated(this.substructure, i)) {//this.substructure.getAtom(i))) {
+            if (!Utils.isSaturated(this.substructure, i)) {
                 this.unsaturatedAtomIndices.add(i);
             }            
         }
@@ -219,7 +218,7 @@ public final class SSC {
         }
         if(!this.updateConnectionTree(atomIndexInSubstructure)){
             return false;
-        }
+        }        
         final String HOSECodePrev = this.getHOSECode(atomIndexInSubstructure);
         final String HOSECode = HOSECodeBuilder.buildHOSECode(this.connectionTrees.get(atomIndexInSubstructure), false);
         if((HOSECodePrev != null) && !HOSECode.equals(HOSECodePrev)){
@@ -257,10 +256,10 @@ public final class SSC {
             if (this.getHOSECodeLookupIndices().get(HOSECode).contains(atomIndexInSubstructure)) {
                 return HOSECode;
             }
-        }
+        }        
         
         return null;
-    }        
+    }     
     
     public ArrayList<Integer> getAtomIndicesInHOSECodeSpheres(final int atomIndexInSubstructure, final int sphere) {
         if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
