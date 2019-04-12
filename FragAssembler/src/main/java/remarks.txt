@@ -17,4 +17,10 @@
     -   generally usage of documents from MongoDB or JSON objects 
         instead of SSC class objects?
 
+-   important next steps:
+    -   usage of solvent deviations (effects) as shift match window, i.e. for
+        finding equivalent signals between to spectra
+    -   use Kekulisation method to set/validate new assembled aromatic systems 
+    -   check for hill climbing assembly algorithm
+
 
