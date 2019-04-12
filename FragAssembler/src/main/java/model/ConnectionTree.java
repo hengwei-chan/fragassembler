@@ -23,9 +23,9 @@
  */
 package model;
 
-import fragmentation.HOSECodeBuilder;
+import hose.HOSECodeBuilder;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IBond;
 
@@ -35,12 +35,12 @@ import org.openscience.cdk.interfaces.IBond;
  */
 public class ConnectionTree implements Cloneable {
     private final ConnectionTreeNode root;
-    private final HashSet<Integer> keySet;
+    private final LinkedHashSet<Integer> keySet;
     private int maxSphere;
 
     public ConnectionTree(final IAtom rootAtom, final int key, final int startSphere) {
         this.root = new ConnectionTreeNode(rootAtom, key, startSphere, false); 
-        this.keySet = new HashSet<>();
+        this.keySet = new LinkedHashSet<>();
         this.keySet.add(this.root.getKey());
         this.maxSphere = 0;
     }
@@ -77,18 +77,14 @@ public class ConnectionTree implements Cloneable {
         return this.getNodesInSphere(sphere).size();
     }
     
-    public HashSet<Integer> getKeys(){
-        return this.keySet;
-    }
-    
-    public ArrayList<Integer> getKeysInOrder(final boolean withoutRingClosureNodes){
-        final ArrayList<Integer> keys = new ArrayList<>();
+    public LinkedHashSet<Integer> getKeys(final boolean withoutRingClosureNodes){
+        final LinkedHashSet<Integer> keys = new LinkedHashSet<>();
         for (int s = 0; s <= this.getMaxSphere(); s++) {
             for (final ConnectionTreeNode nodeInSphere : this.getNodesInSphere(s)) {
-                if(withoutRingClosureNodes){
-                    if(!nodeInSphere.isRingClosureNode()){
+                if (withoutRingClosureNodes) {
+                    if (!nodeInSphere.isRingClosureNode()) {
                         keys.add(nodeInSphere.getKey());
-                    }                    
+                    }
                 } else {
                     keys.add(nodeInSphere.getKey());
                 }
@@ -97,7 +93,7 @@ public class ConnectionTree implements Cloneable {
         
         return keys;
     }
-        
+   
     public boolean containsKey(final int key){
         return this.keySet.contains(key);
     }
