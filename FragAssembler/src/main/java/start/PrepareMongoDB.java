@@ -23,13 +23,10 @@
  */
 package start;
 
+import casekit.NMR.DB;
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
-import com.mongodb.MongoClientOptions;
-import com.mongodb.MongoCredential;
-import com.mongodb.ServerAddress;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
 import java.io.FileNotFoundException;
 import java.util.Collections;
 import model.SSCLibrary;
@@ -66,40 +63,11 @@ public class PrepareMongoDB {
         this.tm = new TimeMeasurement();        
     }  
     
-    private void login(final String mongoUser, final String mongoPassword, 
-            final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection) throws CDKException{
-        try {
-            // Creating a Mongo client   
-            this.tm.start();
-            this.mongo = new MongoClient(
-                    new ServerAddress("127.0.0.1", 27017),
-                    MongoCredential.createCredential(
-                            mongoUser,
-                            mongoAuthDB,
-                            mongoPassword.toCharArray()),
-                    MongoClientOptions.builder().build());
-            System.out.println("Login to MongoDB was successfull");
-            // Accessing the database 
-            final MongoDatabase database = this.mongo.getDatabase(mongoDBName);
-            System.out.println("Access to database \"" + mongoDBName + "\" was successfull");
-            // Retrieving a collection
-            this.collection = database.getCollection(mongoDBCollection);
-            System.out.println("Retrieval of collection \"" + mongoDBCollection + "\" was successfull");
-            this.tm.stop();
-            System.out.println("--> time needed: " + this.tm.getResult() + " s");
-        } catch (Exception e) {
-            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": could not connect to database \"" + mongoDBName + "\" or collection \"" + mongoDBCollection + "\"");
-        }
-    }
-    
-    private void logout(){
-        this.mongo.close();
-    }
-
     public void prepare(final String mongoUser, final String mongoPassword, 
-            final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException {
+            final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection, final boolean removeDuplicates) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException {
         
-        this.login(mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection);
+        this.mongo = DB.login(mongoUser, mongoPassword, mongoAuthDB);
+        this.collection = DB.getCollection(this.mongo, mongoDBName, mongoDBCollection);
         this.sscLibrary = new SSCLibrary(this.nThreads);
         if (this.importFromNMRShiftDB) {
             // empty MongoDB collection
@@ -114,13 +82,16 @@ public class PrepareMongoDB {
             for (int m = 2; m <= this.maxSphere; m++) {
                 System.out.println("Building SSCs for " + m + "-spheres...");
                 this.tm.start();
-                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, Start.SPECTRUM_PROPERTY_ATOMTYPE, m, offset);
+                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, m, offset);
+                if(removeDuplicates){
+                    this.sscLibrary.removeDuplicates();
+                }
                 System.out.println("SSCs for " + m + "-spheres build!!!");
                 this.tm.stop();
                 System.out.println("--> time needed: " + this.tm.getResult() + " s");
                 System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
 
-                offset = Collections.max(this.sscLibrary.getSSCIndices()) + 1;
+                offset = this.sscLibrary.getLastSSCIndex() + 1;
             }
             System.out.println("storing SSC library into MongoDB in database \"" + mongoDBName + "\" in collection \"" + mongoDBCollection + "\"...");
             this.tm.start();
@@ -129,12 +100,14 @@ public class PrepareMongoDB {
             this.tm.stop();
             System.out.println("--> time needed: " + tm.getResult() + " s");
         } else if (this.extendFromNMRShiftDB) {
-            // db.data.find({}, {_id: 1}).sort({_id: -1}).limit(1)
-            int offset = ((int) this.collection.find().sort(new BasicDBObject("_id", -1)).limit(1).first().get("_id")) + 1;
+            int offset = ((int) this.collection.find().sort(new BasicDBObject("index", -1)).limit(1).first().get("index")) + 1;
             System.out.println("offset: " + offset);
             System.out.println("Building SSCs for " + this.maxSphere + "-spheres...");
             this.tm.start();
-            this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, Start.SPECTRUM_PROPERTY_ATOMTYPE, this.maxSphere, offset);
+            this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, this.maxSphere, offset);
+            if(removeDuplicates){
+                this.sscLibrary.removeDuplicates();
+            }
             System.out.println("SSCs for " + this.maxSphere + "-spheres build!!!");
             this.tm.stop();
             System.out.println("--> time needed: " + this.tm.getResult() + " s");
@@ -146,7 +119,7 @@ public class PrepareMongoDB {
             this.tm.stop();
             System.out.println("--> time needed: " + this.tm.getResult() + " s");
         }           
-        this.logout();
+        DB.logout(this.mongo);
         
     }
 }
