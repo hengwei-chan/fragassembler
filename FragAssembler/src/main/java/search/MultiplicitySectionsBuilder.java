@@ -36,8 +36,8 @@ import org.openscience.cdk.exception.CDKException;
  */
 public class MultiplicitySectionsBuilder {
     
-    final HashSet<String> multiplicities;
-    int minLimit, maxLimit, stepSize, steps;
+    private final HashSet<String> multiplicities;
+    private int minLimit, maxLimit, stepSize, steps;
     
     public MultiplicitySectionsBuilder(){        
         this.multiplicities = new HashSet<>();
@@ -45,6 +45,7 @@ public class MultiplicitySectionsBuilder {
     }
     
     private void init(){
+        this.multiplicities.clear();
         this.multiplicities.add("S");
         this.multiplicities.add("D");
         this.multiplicities.add("T");
@@ -53,6 +54,18 @@ public class MultiplicitySectionsBuilder {
         this.maxLimit = 260;
         this.stepSize = 5;
         this.steps = (this.maxLimit - this.minLimit) / this.stepSize; // ppm range from -20 to 260 in 5 ppm steps
+    }
+    
+    /**
+     * Resets to following default values: <br> <br>
+     * multiplicties: S, D, T. Q <br>
+     * min. ppm limit: -20 <br>
+     * max. ppm limit: 260 <br>
+     * step size: 5
+     * 
+     */
+    public void reset(){
+        this.init();
     }
     
     public HashMap<String, ArrayList<Integer>> getMultiplicitySections(final Spectrum spectrum) throws CDKException {
