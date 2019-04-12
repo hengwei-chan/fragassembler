@@ -23,15 +23,19 @@
  */
 package fragmentation;
 
+import hose.HOSECodeBuilder;
 import model.SSC;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
@@ -56,7 +60,6 @@ public class Fragmentation {
      * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
      */
     public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads) throws InterruptedException, CDKException, CloneNotSupportedException {                
-        
         return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxNoOfSpheres, nThreads, 0);
     }
     
@@ -98,13 +101,17 @@ public class Fragmentation {
                         throw new IllegalStateException(e);
                     }
                 })
-                .forEach((sscs) -> {
-                    sscLibrary.extend(sscs);                    
+                .forEach((sscLibraryTemp) -> {
+            try {                    
+                sscLibrary.extend(sscLibraryTemp);
+            } catch (InterruptedException ex) {
+                Logger.getLogger(Fragmentation.class.getName()).log(Level.SEVERE, null, ex);
+            }
                 });
         // shut down the executor service
         Utils.stopExecuter(executor, 5);                        
-        
-        
+                
+
         return sscLibrary;
     }
     
@@ -176,18 +183,30 @@ public class Fragmentation {
      * @see Fragmentation#buildSubstructure(org.openscience.cdk.interfaces.IAtomContainer, int, int) 
      */
     public static SSC buildSSC(final IAtomContainer structure, final Spectrum spectrum, final Assignment assignment, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException, CloneNotSupportedException{
-        final ArrayList<Integer> substructureAtomIndices = Fragmentation.buildSubstructureAtomIndicesSet(structure, rootAtomIndex, maxNoOfSpheres);        
+        final ArrayList<Integer> substructureAtomIndices = new ArrayList<>(Fragmentation.buildSubstructureAtomIndicesSet(structure, rootAtomIndex, maxNoOfSpheres));        
         final IAtomContainer substructure = Fragmentation.buildSubstructure(structure, rootAtomIndex, maxNoOfSpheres);
         final Spectrum subspectrum = new Spectrum(spectrum.getNuclei());
         final Assignment subassignment = new Assignment(subspectrum);
+        IAtom atomInStructure, atomInSubstructure;
         for (int j = 0; j < substructure.getAtomCount(); j++) {
-            if(structure.getAtom(substructureAtomIndices.get(j)).getSymbol().equals(Utils.getAtomTypeFromSpectrum(subspectrum, 0))){                
+            atomInStructure = structure.getAtom(substructureAtomIndices.get(j));
+            atomInSubstructure = substructure.getAtom(j);
+            if(atomInStructure.getSymbol().equals(Utils.getAtomTypeFromSpectrum(subspectrum, 0))){                
                 if((assignment.getSignalIndex(0, substructureAtomIndices.get(j)) == null) || (spectrum.getSignal(assignment.getSignalIndex(0, substructureAtomIndices.get(j))) == null)){                    
                     return null;
                 }                
                 subspectrum.addSignal(spectrum.getSignal(assignment.getSignalIndex(0, substructureAtomIndices.get(j))));
-                subassignment.addAssignment(new int[]{j});
-            }            
+                subassignment.addAssignment(new int[]{j});                
+            }                        
+            atomInSubstructure.setIsInRing(atomInStructure.isInRing());
+            atomInSubstructure.setIsAromatic(atomInStructure.isAromatic());
+            atomInSubstructure.setCharge(atomInStructure.getCharge());
+            atomInSubstructure.setValency(atomInStructure.getValency());
+            
+            for (final IAtom connectedAtomInSubstructure : substructure.getConnectedAtomsList(atomInSubstructure)) {
+                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsInRing(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isInRing());
+                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsAromatic(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isAromatic());
+            }
         }
         subspectrum.setSolvent(spectrum.getSolvent());
         subspectrum.setSpectrometerFrequency(spectrum.getSpectrometerFrequency());
@@ -233,8 +252,8 @@ public class Fragmentation {
      * @throws org.openscience.cdk.exception.CDKException
      * @see HOSECodeBuilder#buildConnectionTree(org.openscience.cdk.interfaces.IAtomContainer, int, int) 
      */
-    public static ArrayList<Integer> buildSubstructureAtomIndicesSet(final IAtomContainer structure, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException {
-        return HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxNoOfSpheres).getKeysInOrder(true);
+    public static LinkedHashSet<Integer> buildSubstructureAtomIndicesSet(final IAtomContainer structure, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException {
+        return HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxNoOfSpheres).getKeys(true);
     }
     
 }
