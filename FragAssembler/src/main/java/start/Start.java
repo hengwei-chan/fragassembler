@@ -43,26 +43,28 @@ import org.openscience.cdk.exception.CDKException;
 public class Start {  
     
     private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueriesFile, pathToOutputsFolder, pathToJSON, format;
-    private int nThreads, nStarts, maxSphere;
-    private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON;
+    private int nThreads, nStarts, maxSphere, minMatchingSphere;
+    private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON, removeDuplicates;
     private SSCLibrary sscLibrary;   
     private ProcessQueriesJSON processQueriesJSON;
     private ProcessQueriesMongoDB processQueriesMongoDB;
-    public static final String SPECTRUM_PROPERTY = "Spectrum 13C 0";
-    public static final String SPECTRUM_PROPERTY_ATOMTYPE = "C";
-    public static final double PICK_PRECISION = 0.3, MATCH_FACTOR_THRS = 3.0, SHIFT_TOL = 3.0;
-    public static final int MIN_MATCHING_SPHERE_COUNT = 1;
+    private double shiftTol, matchFactorThrs;
+    public static double EQUIV_SIGNAL_THRS = 0.5;
+    public static int DECIMAL_PLACES = 2;
     
-    public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {
+    public static final String SPECTRUM_PROPERTY = "Spectrum 13C 0";
+    
+    public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {                                                                    
         if (this.useMongoDB) {
             final PrepareMongoDB prepareMongoDB = new PrepareMongoDB(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-            prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
-            this.processQueriesMongoDB = new ProcessQueriesMongoDB(this.pathToQueriesFile, this.pathToOutputsFolder, this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, this.nThreads, this.nStarts);
+            prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, this.removeDuplicates);
+            this.processQueriesMongoDB = new ProcessQueriesMongoDB(this.pathToQueriesFile, this.pathToOutputsFolder, this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, 
+                    this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
             this.processQueriesMongoDB.process();
         } else if (this.useJSON) {
             final PrepareJSONFile prepareJSONFile = new PrepareJSONFile(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-            this.sscLibrary = prepareJSONFile.prepare(this.pathToJSON);
-            this.processQueriesJSON = new ProcessQueriesJSON(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts);
+            this.sscLibrary = prepareJSONFile.prepare(this.pathToJSON,  this.removeDuplicates);
+            this.processQueriesJSON = new ProcessQueriesJSON(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
             this.processQueriesJSON.process();
         } else {
             throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
@@ -72,8 +74,8 @@ public class Start {
     
     
     private void parseArgs(String[] args) throws ParseException, org.apache.commons.cli.ParseException, CDKException {
-        Options options = setupOptions(args);
-        CommandLineParser parser = new DefaultParser();
+        final Options options = setupOptions(args);
+        final CommandLineParser parser = new DefaultParser();
         try {
             CommandLine cmd = parser.parse(options, args);
             this.format = cmd.getOptionValue("format");            
@@ -108,7 +110,10 @@ public class Start {
                     this.useMongoDB = false;
                     this.useJSON = false;
                     throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
-            }            
+            }   
+            
+            System.out.println("-useMongoDB: " + this.useMongoDB);
+            System.out.println("-useJSON: " + this.useJSON);      
             
             if(cmd.hasOption("import") || cmd.hasOption("extend")){
                 if (cmd.hasOption("import")) {
@@ -117,30 +122,50 @@ public class Start {
                 } else {//if (cmd.hasOption("extend")) {
                     this.importFromNMRShiftDB = false;
                     this.extendFromNMRShiftDB = true;                    
-                }                  
+                }           
+                System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
+                System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB); 
                 if (!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")) {
                     throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": parameter \"nmrshiftdb\" and/or \"maxsphere\" is missing\"");
                 } else {
                     this.pathToNMRShiftDB = cmd.getOptionValue("nmrshiftdb");   
                     this.maxSphere = Integer.parseInt(cmd.getOptionValue("maxsphere"));
-                    if (this.maxSphere < 2) {
-                        throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\" < 2");
+                    if (this.maxSphere < 1) {
+                        throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid number of maximum sphere: \"" + this.maxSphere + "\" < 1");
                     }
-                    System.out.println("-nmrshiftdb: " + this.pathToNMRShiftDB);
-                    System.out.println("-maxsphere: " + this.maxSphere);
+                    System.out.println("-pathToNMRShiftDB: " + this.pathToNMRShiftDB);
+                    System.out.println("-maxSphere: " + this.maxSphere);
                 }
             } else {
                 this.importFromNMRShiftDB = false;
                 this.extendFromNMRShiftDB = false;
-            }     
+                
+                System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
+                System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB); 
+            }   
             
-            System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
-            System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB);
+            this.removeDuplicates = false;
+            if(cmd.hasOption("noduplicates")){
+                this.removeDuplicates = true;
+            }
+            
+            this.shiftTol = Double.parseDouble(cmd.getOptionValue("tol"));
+            this.matchFactorThrs = Double.parseDouble(cmd.getOptionValue("mft"));
+            this.minMatchingSphere = Integer.parseInt(cmd.getOptionValue("minsphere", "1"));
             this.nThreads = Integer.parseInt(cmd.getOptionValue("nthreads", "1"));            
             this.nStarts = Integer.parseInt(cmd.getOptionValue("nstarts", "-1"));                        
-            
             this.pathToQueriesFile = cmd.getOptionValue("query");
             this.pathToOutputsFolder = cmd.getOptionValue("output", ".");
+            
+            System.out.println("-shiftTol: " + this.shiftTol);
+            System.out.println("-matchFactorThrs: " + this.matchFactorThrs);   
+            System.out.println("-minMatchingSphere: " + this.minMatchingSphere);   
+            System.out.println("-nThreads: " + this.nThreads);
+            System.out.println("-nStarts: " + this.nStarts);
+            System.out.println("-removeDuplicates: " + this.removeDuplicates);
+            System.out.println("-pathToQueriesFile: " + this.pathToQueriesFile);
+            System.out.println("-pathToOutputsFolder: " + this.pathToOutputsFolder + "\n\n");
+            
             this.pathToJSON = cmd.getOptionValue("json");
             
         } catch (org.apache.commons.cli.ParseException e) {
@@ -171,16 +196,28 @@ public class Start {
                 .longOpt("query")
                 .desc("Path to a file containing the query spectra in NMRShiftDB format. One spectrum for each line.")
                 .build();
-        options.addOption(pathToQueryFileOption);
-        Option maxsphereOption = Option.builder("maxsphere")
+        options.addOption(pathToQueryFileOption);    
+        Option shiftTolOption = Option.builder("tol")
+                .required(true)
+                .hasArg()
+                .longOpt("tolerance")
+                .desc("Tolerance value for shift matching.")
+                .build();
+        options.addOption(shiftTolOption);
+        Option matchFactorThrsOption = Option.builder("mft")
+                .required(true)
+                .hasArg()
+                .longOpt("mfthreshold")
+                .desc("Threshold value for maximum match factor.")
+                .build();
+        options.addOption(matchFactorThrsOption);
+        Option minMatchingSphereOption = Option.builder("min")
                 .required(false)
                 .hasArg()
-                .desc("Maximum sphere limit for SSC creation. Minimum value is 2."
-                        + "\nIf the \"import\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached."
-                        + "\nIf the \"extend\" option is selected: only SSCs with exactly spherical limit \"maxsphere\" will be created." 
-                        + "\nIf both parameters are given: the \"import\" will be done.")
+                .longOpt("minsphere")
+                .desc("Minimum matching sphere count. The default is set to \"1\".")
                 .build();
-        options.addOption(maxsphereOption);
+        options.addOption(minMatchingSphereOption);
         Option pathToOutputsFolderOption = Option.builder("o")
                 .required(false)
                 .hasArg()
@@ -218,6 +255,15 @@ public class Start {
                 .desc("Path to NMRShiftDB (SDF).")
                 .build();
         options.addOption(nmrshiftdb);
+        Option maxsphereOption = Option.builder("maxsphere")
+                .required(false)
+                .hasArg()
+                .desc("Maximum sphere limit for SSC creation. Minimum value is 1."
+                        + "\nIf the \"import\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached."
+                        + "\nIf the \"extend\" option is selected: only SSCs with exactly spherical limit \"maxsphere\" will be created." 
+                        + "\nIf both parameters are given: the \"import\" will be done.")
+                .build();
+        options.addOption(maxsphereOption);
         Option mongoUserOption = Option.builder("u")
                 .required(false)
                 .hasArg()
@@ -253,6 +299,12 @@ public class Start {
                 .desc("Collection name to fetch from selected database in MongoDB.")
                 .build();
         options.addOption(mongoCollectionNameOption);
+        Option removeDuplicatesOption = Option.builder("nd")
+                .required(false)
+                .longOpt("noduplicates")
+                .desc("If given, the SSC library to build/extend will contain no structural duplicates.")
+                .build();
+        options.addOption(removeDuplicatesOption);
         Option pathToJSONLibraryOption = Option.builder("j")
                 .required(false)
                 .hasArg()
