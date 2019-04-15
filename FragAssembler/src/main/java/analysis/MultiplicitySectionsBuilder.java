@@ -21,7 +21,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package search;
+package analysis;
 
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
