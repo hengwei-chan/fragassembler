@@ -25,8 +25,8 @@ After that the assembling process starts with the first SSC hit and tries to ext
 next ranked SSCs and their substructures if there is a structural overlap (HOSE code) and 
 some validation steps are passed successfully. <br>
 The result is a list of assembled structure proposals for a query spectrum in a file containing SMILES.
-  
- 
- ##References 
- <sup>1</sup> C. Steinbeck et al., J. Chem. Inf. Comput. Sci.20034361733-1739, https://doi.org/10.1021/ci0341363 <br>
- <sup>2</sup> W. Bremser, 1978, Analytica Chimica Acta, 103(4), 355-365., https://doi.org/10.1016/S0003-2670(01)83100-7
+
+
+##References 
+<sup>1</sup> C. Steinbeck et al., J. Chem. Inf. Comput. Sci.20034361733-1739, https://doi.org/10.1021/ci0341363 <br>
+<sup>2</sup> W. Bremser, 1978, Analytica Chimica Acta, 103(4), 355-365., https://doi.org/10.1016/S0003-2670(01)83100-7
