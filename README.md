@@ -1,6 +1,6 @@
 # Fragment Assembler (FragAssembler)
 
-FragAssembler aims on the computer-assisted structure elucidation of (un)knowns compounds by re-assembling 
+FragAssembler aims on the computer-assisted structure elucidation of (un)known compounds by re-assembling 
 known fragments of a dedicated library, solely based on given 13C NMR information. <br> 
 
 This approach follows the idea by M. Will et al.<sup>1</sup>. 
