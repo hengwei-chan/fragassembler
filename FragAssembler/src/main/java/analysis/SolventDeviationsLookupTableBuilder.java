@@ -23,8 +23,9 @@
  */
 package analysis;
 
-import casekit.NMR.DB;
+import casekit.NMR.dbservice.MongoDB;
 import casekit.NMR.Utils;
+import casekit.NMR.dbservice.NMRShiftDB;
 import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
 import java.io.FileNotFoundException;
@@ -47,6 +48,7 @@ import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
 
 /**
+ * Class to build a solvent deviations lookup table and to store it into MongoDB collection.
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
@@ -56,11 +58,11 @@ public class SolventDeviationsLookupTableBuilder {
             final String mongoUser, final String mongoPassword, final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection) throws InterruptedException {
 
         try {
-            final MongoClient mongo = DB.login(mongoUser, mongoPassword, mongoAuthDB);
-            final MongoCollection<Document> collection = DB.getCollection(mongo, mongoDBName, mongoDBCollection);
+            final MongoClient mongo = MongoDB.login(mongoUser, mongoPassword, mongoAuthDB);
+            final MongoCollection<Document> collection = MongoDB.getCollection(mongo, mongoDBName, mongoDBCollection);
             collection.drop();
             System.out.println("Build and export lookup table...");
-            final HashMap<String, ArrayList<Double>> deviationsMap = DB.getSolventDeviations(pathToNMRShiftDB, nucleus);
+            final HashMap<String, ArrayList<Double>> deviationsMap = NMRShiftDB.getSolventDeviations(pathToNMRShiftDB, nucleus);
             
             
             // initialize an executor for parallelization
@@ -109,7 +111,7 @@ public class SolventDeviationsLookupTableBuilder {
             
             System.out.println("done...");
 
-            DB.logout(mongo);
+            MongoDB.logout(mongo);
         } catch (CDKException | FileNotFoundException ex) {
             Logger.getLogger(HOSECodeLookupTableBuilder.class.getName()).log(Level.SEVERE, null, ex);
 
