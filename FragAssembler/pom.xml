@@ -33,6 +33,11 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.1</version>
+            </plugin>
         </plugins>
     </build>
     <dependencies>
@@ -43,16 +48,9 @@
             <type>jar</type>
         </dependency>
         <dependency>
-            <groupId>casekit</groupId>
-            <artifactId>casekit</artifactId>
-            <version>1.0-SNAPSHOT</version>
-            <type>jar</type>
-        </dependency>
-        <dependency>
             <groupId>org.openscience.cdk</groupId>
             <artifactId>cdk-inchi</artifactId>
             <version>2.2-SNAPSHOT</version>
-            <type>jar</type>
         </dependency>
         <dependency>  
             <groupId>com.googlecode.json-simple</groupId>  
@@ -70,6 +68,22 @@
             <groupId>org.mongodb</groupId>
             <artifactId>mongo-java-driver</artifactId>
             <version>3.10.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.3.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openscience</groupId>
+            <artifactId>casekit</artifactId>
+            <version>1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openscience</groupId>
+            <artifactId>HOSECodeBuilder</artifactId>
+            <version>1.0</version>
         </dependency>
     </dependencies>
     <properties>
