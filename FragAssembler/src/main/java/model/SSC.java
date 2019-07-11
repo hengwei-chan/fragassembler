@@ -30,10 +30,12 @@ import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
 import java.util.HashMap;
+
+import hose.model.ConnectionTree;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
-import search.MultiplicitySectionsBuilder;
+import analysis.MultiplicitySectionsBuilder;
 
 /**
  * Class for representing a subspectrum-substructure-correlation.
@@ -53,7 +55,7 @@ public final class SSC {
     // stores all atom indices for each single HOSE code
     private final HashMap<String, ArrayList<Integer>> HOSECodeLookupIndices;
     // connection tree holding the spherical information about the substructure
-    private final HashMap<Integer, ConnectionTree> connectionTrees;    
+    private final HashMap<Integer, ConnectionTree> connectionTrees;
     // stores all atom indices for each occurring atom type in substructure    
     private HashMap<String, ArrayList<Integer>> atomTypeIndices;
     // for pre-search: map of multiplicities as keys consisting 
@@ -76,7 +78,7 @@ public final class SSC {
      * @throws CDKException
      * @throws java.lang.CloneNotSupportedException
      */
-    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere) throws CDKException, CloneNotSupportedException {
+    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere) throws Exception {
         this.subspectrum = subspectrum.getClone();
         this.assignment = assignment.clone();
         this.substructure = substructure.clone();     
@@ -100,7 +102,7 @@ public final class SSC {
      * @throws CDKException
      * @throws java.lang.CloneNotSupportedException
      */
-    public SSC getClone() throws CDKException, CloneNotSupportedException {        
+    public SSC getClone() throws Exception {
       return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere);
     }
     
@@ -148,8 +150,8 @@ public final class SSC {
      * @return 
      * 
      * @throws CDKException
-     * @see #updateMaxSphere()
-     * @deprecated 
+     *
+     * @deprecated
      */
     private boolean updateConnectionTrees() throws CDKException {
         for (int i = 0; i < this.getAtomCount(); i++) {
@@ -259,12 +261,19 @@ public final class SSC {
         }        
         
         return null;
-    }     
-    
+    }
+
+    /**
+     * @param atomIndexInSubstructure
+     * @param sphere
+     * @return
+     *
+     * @deprecated
+     */
     public ArrayList<Integer> getAtomIndicesInHOSECodeSpheres(final int atomIndexInSubstructure, final int sphere) {
         if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
             return null;
-        }               
+        }
 
         return this.connectionTrees.get(atomIndexInSubstructure).getNodeKeysInSphere(sphere);
     }
