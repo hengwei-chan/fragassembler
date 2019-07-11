@@ -23,9 +23,8 @@
  */
 package model;
 
-import hose.HOSECodeBuilder;
-import casekit.NMR.DB;
 import casekit.NMR.Utils;
+import casekit.NMR.dbservice.NMRShiftDB;
 import casekit.NMR.model.Signal;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -42,6 +41,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+
+import hose.model.ConnectionTree;
 import org.openscience.cdk.exception.CDKException;
 import fragmentation.Fragmentation;
 import java.util.Collections;
@@ -55,7 +56,7 @@ import java.util.logging.Logger;
 import org.bson.Document;
 
 /**
- * Class to search for matches between a SSC library and query spectra.
+ * Class to maintain a library of SSC objects.
  * 
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
@@ -102,13 +103,6 @@ public final class SSCLibrary {
         Signal signal; 
         for (final SSC ssc : this.map.values()) {
             if(ssc != null){
-//                Utils.combineHashMaps(this.HOSECodeLookupTableShifts, ssc.getHOSECodeLookupShifts());   
-//                for (int i = 0; i < ssc.getAtomCount(); i++) {
-//                    if(!this.HOSECodeLookupTableSSCIndices.containsKey(ssc.getHOSECode(i))){
-//                        this.HOSECodeLookupTableSSCIndices.put(ssc.getHOSECode(i), new ArrayList<>());
-//                    }
-//                    this.HOSECodeLookupTableSSCIndices.get(ssc.getHOSECode(i)).add(ssc.getIndex());
-//                }
                 HOSECode = ssc.getHOSECode(ssc.getRootAtomIndex());
                 if (!this.HOSECodeLookupTableSSCIndices.containsKey(HOSECode)) {
                     this.HOSECodeLookupTableSSCIndices.put(HOSECode, new ArrayList<>());
@@ -160,7 +154,7 @@ public final class SSCLibrary {
                 final Document document = new Document();  
                 final ArrayList<Double> shifts = this.HOSECodeLookupTableShifts.get(HOSECode);
                 document.append("HOSECode", HOSECode);
-                document.append("spheres", HOSECodeBuilder.getSpheresCount(HOSECode));
+                document.append("spheres", hose.Utils.getSpheresCount(HOSECode));
                 final Document documentShifts = new Document();
                 documentShifts.append("count", shifts.size());
                 documentShifts.append("min", (shifts.size() > 0) ? Collections.min(shifts) : null);
@@ -251,7 +245,7 @@ public final class SSCLibrary {
         long sscCounter = 0;
         for (final SSC ssc : this.getSSCs()) {
             final long sscCounterCopy = sscCounter;
-            callables.add((Callable<Document>) () -> {                        
+            callables.add(() -> {
                 return SSCConverter.SSCToDocument(ssc, sscCounterCopy);
             });
             sscCounter++;
@@ -399,7 +393,7 @@ public final class SSCLibrary {
      * @throws java.lang.InterruptedException
      * 
      * @see #removeAll() 
-     * @see #extend(java.lang.String, java.lang.String, java.lang.String, int, int)  
+     * @see #extend(String, String, int, long)
      */
     public void importFromNMRShiftDB(final String pathToNMRShiftDB, final String property, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException {
         this.removeAll();
@@ -413,7 +407,7 @@ public final class SSCLibrary {
      *
      * @param sscLibrary SSC library to add to this library
      * @throws java.lang.InterruptedException
-     * @see #containsSSC(int) 
+     * @see #containsSSC(long)
      */
     public void extend(final SSCLibrary sscLibrary) throws InterruptedException{
 //        this.map.putAll(sscLibrary.getMap());
@@ -463,7 +457,7 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException  
      * @throws java.lang.InterruptedException  
      * 
-     * @see #containsSSC(int)
+     * @see #containsSSC(long)
      */
     public void extend(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
         // initialize an executor for parallelization
@@ -512,7 +506,7 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException  
      * @throws java.lang.InterruptedException  
      * 
-     * @see #containsSSC(int)
+     * @see #containsSSC(long)
      */
     public void extend(final FindIterable<Document> queryResult) throws CDKException, CloneNotSupportedException, InterruptedException  {
         // initialize an executor for parallelization
@@ -561,7 +555,7 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException  
      * @throws java.lang.InterruptedException  
      * 
-     * @see #containsSSC(int)
+     * @see #containsSSC(long)
      */
     public void extend(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
         // initialize an executor for parallelization
@@ -613,11 +607,11 @@ public final class SSCLibrary {
      * @throws java.lang.InterruptedException
      * @throws java.lang.CloneNotSupportedException
      * 
-     * @see Fragmentation#buildSSCLibrary(java.util.HashMap, int, int, int)  
-     * @see #containsSSC(int) 
+     * @see Fragmentation#buildSSCLibrary(HashMap, int, int, long)
+     * @see #extend(String, String, int, long)
      */
     public void extend(final String pathToNMRShiftDB, final String property, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
-        this.extend(Fragmentation.buildSSCLibrary(DB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), maxSphere, this.nThreads, offset));
+        this.extend(Fragmentation.buildSSCLibrary(NMRShiftDB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), maxSphere, this.nThreads, offset));
     }
     
     /**
@@ -632,7 +626,7 @@ public final class SSCLibrary {
      * @throws java.io.FileNotFoundException
      * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.CloneNotSupportedException
-     * @see #containsSSC(int) 
+     * @see #containsSSC(long)
      */
     public void extend(final String pathToJSON, final long offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException{
         final Gson gson = new Gson();
@@ -673,13 +667,23 @@ public final class SSCLibrary {
         Utils.stopExecuter(executor, 5);
         
     }
-    
-    public void removeDuplicates() throws InterruptedException {  
+
+    /**
+     * Removes all duplicated SSCs based on HOSE code comparisons.
+     * If the multiplicities in last sphere differ or shift deviations are higher than a given tolerance value,
+     * then two SSCs are not considered to be the same.
+     *
+     * @param shiftTol shift tolerance value [ppm] in which chemical shifts are considered as the same
+     *
+     * @throws InterruptedException
+     */
+    public void removeDuplicates(final double shiftTol) throws InterruptedException {
         // build/update HOSE code lookup tables, i.e. the one with SSC indices
         this.buildHOSELookupTables();
         
         final HashSet<Long> duplicatesSSCIndices = new HashSet<>();   
         SSC ssc1, ssc2;
+        Signal signalSSC1, signalSSC2;
         long sscIndex1, sscIndex2;
         ConnectionTree connectionTreeSSC1;
         boolean isDuplicate;
@@ -697,7 +701,10 @@ public final class SSCLibrary {
                         if(connectionTreeSSC1.getNode(nodeKey).isRingClosureNode()){
                             continue;
                         }
-                        if(ssc1.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount() != ssc2.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount()){
+                        signalSSC1 = ssc1.getSubspectrum().getSignal(nodeKey);
+                        signalSSC2 = ssc2.getSubspectrum().getSignal(nodeKey);
+                        if((ssc1.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount() != ssc2.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount())
+                                || ((signalSSC1 != null) && (signalSSC2 != null) && (Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol))){
                             isDuplicate = false;
                             break;
                         }
@@ -749,7 +756,7 @@ public final class SSCLibrary {
         return this.map.containsKey(sscIndex);
     }    
     
-    public HashMap<Long, SSC> getMap(){
+    public LinkedHashMap<Long, SSC> getMap(){
         return this.map;
     }
     
@@ -807,7 +814,7 @@ public final class SSCLibrary {
      * 
      * @see #setNThreads(int) 
      */
-    public SSCLibrary getClone() throws CDKException, CloneNotSupportedException, InterruptedException {
+    public SSCLibrary getClone() throws Exception {
         final SSCLibrary sscLibrary = new SSCLibrary(this.nThreads);
         for (final long sscIndex : this.map.keySet()) {
             sscLibrary.insert(this.getSSC(sscIndex).getClone());
