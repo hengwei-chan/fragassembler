@@ -23,7 +23,7 @@
  */
 package analysis;
 
-import casekit.NMR.DB;
+import casekit.NMR.dbservice.MongoDB;
 import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
 import java.io.FileNotFoundException;
@@ -39,8 +39,10 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
+import start.Start;
 
 /**
+ * Class to build a HOSE code lookup table and to store it into MongoDB collection.
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
@@ -56,20 +58,20 @@ public class HOSECodeLookupTableBuilder {
                 System.out.println("Build fragments for maxsphere: " + m);
                 sscLibrary.extend(pathToNMRShiftDB, NMRShiftDBSpectrumProperty, m, offset);
                 if (removeDuplicates) {
-                    sscLibrary.removeDuplicates();
+                    sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
                 }
                 System.out.println("done...");
                 offset = sscLibrary.getLastSSCIndex() + 1;
             }            
             
-            final MongoClient mongo = DB.login(mongoUser, mongoPassword, mongoAuthDB);
-            final MongoCollection<Document> collection = DB.getCollection(mongo, mongoDBName, mongoDBCollection);            
+            final MongoClient mongo = MongoDB.login(mongoUser, mongoPassword, mongoAuthDB);
+            final MongoCollection<Document> collection = MongoDB.getCollection(mongo, mongoDBName, mongoDBCollection);
             collection.drop();
             System.out.println("Build and export lookup table...");
             sscLibrary.exportHOSECodeLookupTable(collection);
             System.out.println("done...");
-            
-            DB.logout(mongo);
+
+            MongoDB.logout(mongo);
         } catch (FileNotFoundException | CDKException | InterruptedException | CloneNotSupportedException ex) {
             Logger.getLogger(HOSECodeLookupTableBuilder.class.getName()).log(Level.SEVERE, null, ex);
             
