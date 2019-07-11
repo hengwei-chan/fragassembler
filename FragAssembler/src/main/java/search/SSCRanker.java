@@ -24,19 +24,17 @@
 package search;
 
 import casekit.NMR.Utils;
+import casekit.NMR.match.Matcher;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import match.Match;
 import model.SSC;
 import model.SSCLibrary;
-import org.openscience.cdk.exception.CDKException;
 import start.Start;
 
 /**
@@ -48,11 +46,10 @@ public final class SSCRanker {
 
     private final SSCLibrary sscLibrary;
     private int nThreads;
-    private final HashMap<Long, Assignment> matchAssignments;
-    private final HashMap<Long, Double> matchFactors;
-    private final HashMap<Long, Float> tanimotoCoefficients;    
+    private final HashMap<Long, Object[]> hits;
     private final ArrayList<Long> rankedSSCIndices;
     private final SSCLibrary rankedSSCLibrary;
+    private final static int NO_OF_CALCULATIONS = 3, ASSIGNMENT_IDX = 0, MATCHFACTOR_IDX = 1, TANIMOTO_COEFFICIENT_IDX = 2;
     
     /**
      * Instanciates a new object of this class.
@@ -62,9 +59,7 @@ public final class SSCRanker {
      *
      * @param sscLibrary HashMap object consisting of SSC and their indices.
      */
-    public SSCRanker(final SSCLibrary sscLibrary){
-        this(sscLibrary, 1);
-    }
+    public SSCRanker(final SSCLibrary sscLibrary) { this(sscLibrary, 1); }
     
     /**
      * Instanciates a new object of this class.     
@@ -76,9 +71,7 @@ public final class SSCRanker {
     public SSCRanker(final SSCLibrary sscLibrary, final int nThreads){
         this.sscLibrary = sscLibrary;
         this.setNThreads(nThreads);
-        this.matchAssignments = new HashMap<>();
-        this.matchFactors = new HashMap<>();
-        this.tanimotoCoefficients = new HashMap<>();
+        this.hits = new HashMap<>();
         this.rankedSSCIndices = new ArrayList<>();
         this.rankedSSCLibrary = new SSCLibrary(this.nThreads);
     }     
@@ -116,90 +109,184 @@ public final class SSCRanker {
     public int getNThreads(){
         return this.nThreads;
     }
-        
+
     /**
-     * Returns the match assignments between a query spectrum and SSCs in 
-     * SSC library.
-     * To create/update these match assignments use the rank function.
+     * Returns the matched SSC indices in this SSC library in ranked order.
+     * To create/update these coefficients use the findHits function.
      *
-     * @return 
-     *  
-     * @see #rank(casekit.NMR.model.Spectrum, double)  
+     * @return
+     *
+     * @see #findHits(casekit.NMR.model.Spectrum, double)
      */
-    public HashMap<Long, Assignment> getMatchAssignments(){
-        return this.matchAssignments;
+    public ArrayList<Long> getRankedSSCIndices() {
+        return this.rankedSSCIndices;
+    }
+
+    /**
+     * Returns the match factors of SSCs in this SSC library in ranked order.
+     * To create/update these match factors use the findHits function.
+     *
+     * @return
+     *
+     * @see #findHits(casekit.NMR.model.Spectrum, double)
+     */
+    public LinkedHashMap<Long, Double> getRankedMatchFactors(){
+        final LinkedHashMap<Long, Double> matchFactors = new LinkedHashMap<>();
+        for (final Long sscIndex : this.rankedSSCIndices){
+            matchFactors.put(sscIndex, (Double) this.hits.get(sscIndex)[SSCRanker.MATCHFACTOR_IDX]);
+        }
+
+        return matchFactors;
+    }
+
+    /**
+     * Returns the tanimoto coefficients of SSCs in this SSC library in ranked order.
+     * To create/update these coefficients use the findHits function.
+     *
+     * @return
+     *
+     * @see #findHits(casekit.NMR.model.Spectrum, double)
+     */
+    public LinkedHashMap<Long, Float> getRankedTanimotoCoefficients() {
+        final LinkedHashMap<Long, Float> tanimotoCoefficients = new LinkedHashMap<>();
+        for (final Long sscIndex :this.rankedSSCIndices){
+            tanimotoCoefficients.put(sscIndex, (Float) this.hits.get(sscIndex)[SSCRanker.TANIMOTO_COEFFICIENT_IDX]);
+        }
+
+        return tanimotoCoefficients;
     }
     
     /**
-     * Returns the match factors of SSCs in SSC library.
-     * To create/update these match factors use the rank function.
-     *
-     * @return
-     *  
-     * @see #rank(casekit.NMR.model.Spectrum, double) 
-     */
-    public HashMap<Long, Double> getMatchFactors(){
-        return this.matchFactors;
-    }
-    
-    /**
-     * Returns the tanimoto coefficients of SSCs in SSC library.
-     * To create/update these coefficients use the rank function.
-     *
-     * @return
-     *  
-     * @see #rank(casekit.NMR.model.Spectrum, double) 
-     */
-    public HashMap<Long, Float> getTanimotoCoefficients(){
-        return this.tanimotoCoefficients;
-    }    
-    
-    /**
-     * Returns a SSC library containing clones of the current matching SSCs 
-     * for a query spectrum in ascending ranked order.
-     * To create/update such ranked SSC library use the rank function.
+     * Returns a SSC library containing clones of the current matching SSCs
+     * for a query spectrum in ranked order.
+     * The SSC indices are set in new order starting at 0, 1, 2 etc. .
+     * To create/update such ranked SSC library use the findHits function.
      *
      * @return
      * 
-     * @see #rank(casekit.NMR.model.Spectrum, double) 
+     * @see #findHits(casekit.NMR.model.Spectrum, double)
      */
-    public SSCLibrary getRankedSSCLibrary() {
+    public SSCLibrary getHits() {
         return this.rankedSSCLibrary;
     }
     
-    public long getRankedSSCsCount(){
-        return this.getRankedSSCLibrary().getSSCCount();
+    public long getHitsCount(){
+        return this.getHits().getSSCCount();
     }
                     
     /**
-     * Ranks the SSCs in SSC library according to their match factor regarding 
-     * the query spectrum. 
-     * The results are then available in further class functions, see {@code @see}.
+     * Searches for hits between the SSCs in the class SSC library and
+     * the query spectrum within a certain shift tolerance window. <br>
+     * 1. the number of set assignments (matched signals) (highest) <br>
+     * 2. the Tanimoto coefficient regarding the query spectrum (highest) <br>
+     * 3. the match factor regarding the query spectrum (lowest) <br>
+     * 4. the total substructure size (highest) <br> <br>
+     * The ranked results are then available in further class functions, see {@code @see}.
      *
      * @param querySpectrum Query spectrum
      * @param shiftTol Tolerance value [ppm] for shift matching
      * @throws java.lang.InterruptedException
      * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.CloneNotSupportedException
-     * 
-     * @see #getMatchFactors()  
-     * @see #getMatchAssignments() 
-     * @see #getRankedMatchFactors() 
-     * @see #getRankedTanimotoCoefficients() 
-     * @see #getRankedSSCIndices()  
-     * @see #getRankedSSCLibrary() 
-     * 
+     *
+     * @see #getHits()
+     * @see #getRankedMatchFactors()
+     * @see #getRankedTanimotoCoefficients()
+     *
      */
-    public void rank(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException, CDKException, CloneNotSupportedException{                               
-        this.calculateMatchAssignments(querySpectrum, shiftTol);
-        this.calculateMatchFactors(querySpectrum, shiftTol);
-        this.calculateTanimotoCoefficients(querySpectrum);
- 
-        this.rankSSCIndices();
+    public void findHits(final Spectrum querySpectrum, final double shiftTol) throws Exception {
+        this.calculate(querySpectrum, shiftTol);
+        this.rank();
         this.buildRankedSSCLibrary();
     }
-    
-    private void buildRankedSSCLibrary() throws CDKException, CloneNotSupportedException {
+
+    private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException{
+        this.hits.clear();
+        // initialize an executor for parallelization
+        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ArrayList<Callable<HashMap<Long, Object[]>>> callables = new ArrayList<>();
+        // add all task to do
+        for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
+            callables.add(() -> {
+                final Assignment matchAssignment = Matcher.matchSpectra(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, 0, 0, shiftTol);
+                if (!matchAssignment.isFullyAssigned(0)) {
+                    return null;
+                }
+                final Spectrum matchedQuerySubspectrum = new Spectrum(querySpectrum.getNuclei());
+                for (final int signalIndexInQuerySpectrum : matchAssignment.getAtomIndices(0)) {
+                    matchedQuerySubspectrum.addSignal(querySpectrum.getSignal(signalIndexInQuerySpectrum));
+                }
+                final HashMap<Long, Object[]> tempHashMap = new HashMap<>();
+                final Object[] calculations = new Object[SSCRanker.NO_OF_CALCULATIONS];
+                calculations[SSCRanker.ASSIGNMENT_IDX] = matchAssignment;
+                calculations[SSCRanker.MATCHFACTOR_IDX] = Utils.roundDouble(Matcher.calculateAverageDeviation(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, 0, 0, shiftTol), Start.DECIMAL_PLACES);
+                calculations[SSCRanker.TANIMOTO_COEFFICIENT_IDX] = Matcher.calculateTanimotoCoefficient(matchedQuerySubspectrum, this.sscLibrary.getSSC(sscIndex).getSubspectrum(), 0, 0);
+                tempHashMap.put(sscIndex, calculations);
+
+                return tempHashMap;
+            });
+        }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach(tempHashMap -> {
+                    if ((tempHashMap != null) && !tempHashMap.values().contains(null)) {
+                        this.hits.putAll(tempHashMap);
+                    }
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
+    }
+
+    /**
+     * Ranks the matched hits (SSCs indices) pairwise according to the following: <br>
+     * 1. the number of set assignments (matched signals) (highest) <br>
+     * 2. the Tanimoto coefficient regarding the query spectrum (highest) <br>
+     * 3. the match factor regarding the query spectrum (lowest) <br>
+     * 4. the total substructure size (highest)
+     */
+    private void rank(){
+        this.rankedSSCIndices.clear();
+        // use indices of SSCs of the input SSC library which are valid hits (not null)
+        this.rankedSSCIndices.addAll(this.hits.keySet());
+
+        this.rankedSSCIndices.sort((indexSSC1, indexSSC2) -> {
+            // ranking by number of overlapping signals
+            final int setAssignmentsCountComp = -1 * Integer.compare(
+                    ((Assignment) hits.get(indexSSC1)[SSCRanker.ASSIGNMENT_IDX]).getSetAssignmentsCount(0),
+                    ((Assignment) hits.get(indexSSC2)[SSCRanker.ASSIGNMENT_IDX]).getSetAssignmentsCount(0));
+            if (setAssignmentsCountComp != 0) {
+                return setAssignmentsCountComp;
+            }
+            // ranking by tanimoto coefficient
+            final int tanimotoCoefficientComp = -1 * Float.compare(
+                    ((Float) hits.get(indexSSC1)[SSCRanker.TANIMOTO_COEFFICIENT_IDX]),
+                    ((Float) hits.get(indexSSC2)[SSCRanker.TANIMOTO_COEFFICIENT_IDX]));
+            if (tanimotoCoefficientComp != 0) {
+                return tanimotoCoefficientComp;
+            }
+            // ranking by match factor
+            final int matchFactorComp = Double.compare(
+                    ((Double) hits.get(indexSSC1)[SSCRanker.MATCHFACTOR_IDX]),
+                    ((Double) hits.get(indexSSC2)[SSCRanker.MATCHFACTOR_IDX]));
+            if (matchFactorComp != 0) {
+                return matchFactorComp;
+            }
+            // ranking by total subtructure size
+            return -1 * Integer.compare(
+                    sscLibrary.getSSC(indexSSC1).getAtomCount(),
+                    sscLibrary.getSSC(indexSSC2).getAtomCount());
+        });
+    }
+
+    private void buildRankedSSCLibrary() throws Exception {
         this.rankedSSCLibrary.removeAll();
         SSC rankedSSC;
         for (final long rankedSSCIndex : this.rankedSSCIndices) {
@@ -209,157 +296,4 @@ public final class SSCRanker {
         }
     }
     
-    private void calculateMatchAssignments(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException{
-        this.matchAssignments.clear();
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<HashMap<Long, Assignment>>> callables = new ArrayList<>();
-        // add all task to do
-        for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
-            callables.add((Callable<HashMap<Long, Assignment>>) () -> {
-                final HashMap<Long, Assignment> tempHashMap = new HashMap<>();
-                tempHashMap.put(sscIndex, Match.matchSpectra(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, shiftTol));
-                return tempHashMap;
-            });
-        }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((tempHashMap) -> {
-                    if (!tempHashMap.values().contains(null)) {
-                        this.matchAssignments.putAll(tempHashMap);
-                    } 
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
-    }
-    
-    private void calculateMatchFactors(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException{
-        this.matchFactors.clear();
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<HashMap<Long, Double>>> callables = new ArrayList<>();
-        // add all task to do
-        for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
-            callables.add((Callable<HashMap<Long, Double>>) () -> {
-                final HashMap<Long, Double> tempHashMap = new HashMap<>();
-                final Assignment matchAssignment = matchAssignments.get(sscIndex);
-                if (matchAssignment.isFullyAssigned(0)) {
-                    tempHashMap.put(sscIndex, Utils.roundDouble(Match.calculateMatchFactor(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, shiftTol), Start.DECIMAL_PLACES));
-                }                
-                return tempHashMap;
-            });
-        }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((tempHashMap) -> {
-                    if (!tempHashMap.values().contains(null)) {
-                        this.matchFactors.putAll(tempHashMap);
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
-    }
-    
-    private void calculateTanimotoCoefficients(final Spectrum querySpectrum) throws InterruptedException {
-        this.tanimotoCoefficients.clear();
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<HashMap<Long, Float>>> callables = new ArrayList<>();
-        // add all task to do
-        for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
-            callables.add((Callable<HashMap<Long, Float>>) () -> {
-                final HashMap<Long, Float> tempHashMap = new HashMap<>();
-                final Assignment matchAssignment = matchAssignments.get(sscIndex);
-                if(matchAssignment.isFullyAssigned(0)){
-                    final Spectrum matchedQuerySubspectrum = new Spectrum(querySpectrum.getNuclei());
-                    for (final int signalIndexInQuerySpectrum : matchAssignment.getAtomIndices(0)) {
-                        matchedQuerySubspectrum.addSignal(querySpectrum.getSignal(signalIndexInQuerySpectrum));
-                    }
-                    tempHashMap.put(sscIndex, Match.calculateTanimotoCoefficient(matchedQuerySubspectrum, this.sscLibrary.getSSC(sscIndex).getSubspectrum(), 0));
-                }
-                
-                return tempHashMap;
-            });
-        }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((tempHashMap) -> {
-                    if (!tempHashMap.values().contains(null)) {
-                        this.tanimotoCoefficients.putAll(tempHashMap);
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
-    }
-    
-    /**
-     * Ranks SSC indices according their substructure size and match factor. 
-     *
-     */
-    private void rankSSCIndices(){
-        this.rankedSSCIndices.clear();
-        // use indices of SSCs of the input SSC library which belonging match factor is valid (not null)
-        this.rankedSSCIndices.addAll(this.matchFactors.keySet()); 
-//        // use indices of SSCs of the input SSC library which belonging tanimoto coefficient was not null
-//        this.rankedSSCIndices.addAll(this.tanimotoCoefficients.keySet()); 
-        
-        Collections.sort(this.rankedSSCIndices, new Comparator<Long>() {
-            @Override
-            public int compare(final Long indexSSC1, final Long indexSSC2) {     
-                // ranking by number of overlapping signals
-                final int setAssignmentsCountComp = -1 * Integer.compare(
-                        matchAssignments.get(indexSSC1).getSetAssignmentsCount(0),
-                        matchAssignments.get(indexSSC2).getSetAssignmentsCount(0));
-                if (setAssignmentsCountComp != 0) {
-                    return setAssignmentsCountComp;
-                }
-//                // ranking by tanimoto coefficient 
-//                final int tanimotoCoefficientComp = -1 * Float.compare(tanimotoCoefficients.get(indexSSC1), tanimotoCoefficients.get(indexSSC2));
-//                if (tanimotoCoefficientComp != 0) {
-//                    return tanimotoCoefficientComp;
-//                }
-                // ranking by match factor 
-                final int matchFactorComp = Double.compare(matchFactors.get(indexSSC1), matchFactors.get(indexSSC2));
-                if(matchFactorComp != 0){
-                    return matchFactorComp;
-                }  
-                // ranking by total subtructure size
-                final int substructureSizeComp = -1 * Integer.compare(
-                        sscLibrary.getSSC(indexSSC1).getAtomCount(),
-                        sscLibrary.getSSC(indexSSC2).getAtomCount());
-//                if (substructureSizeComp != 0) {
-                    return substructureSizeComp;
-//                }
-//                // ranking by unsaturated atoms count (increasing)
-//                final int unsaturatedAtomsCountComp = Integer.compare(
-//                        sscLibrary.getSSC(indexSSC1).getUnsaturatedAtomIndices().size(),
-//                        sscLibrary.getSSC(indexSSC2).getUnsaturatedAtomIndices().size());                
-//                return unsaturatedAtomsCountComp;
-            }
-        });
-    }        
 }
