@@ -27,26 +27,21 @@ import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.mongodb.util.JSON;
 import org.bson.Document;
-import org.openscience.cdk.exception.CDKException;
 
 /**
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
 public class SSCConverter {
-    
-    public static SSC JsonObjectToSSC(final JsonObject sscJsonObject) throws CDKException, CloneNotSupportedException {
-        final Gson gson = new Gson();    
-        
-        System.out.println("\nsubspectrum: ");
-        System.out.println(gson.fromJson(sscJsonObject.get("subspectrum"), Spectrum.class).getShifts(0));
-        
-        final SSC ssc = new SSC(                                
-                gson.fromJson(sscJsonObject.get("subspectrum"), Spectrum.class),
-                gson.fromJson(sscJsonObject.get("assignment"), Assignment.class),
-                gson.fromJson(sscJsonObject.get("substructure"), ExtendedConnectionMatrix.class).toAtomContainer(),
+
+    private final static Gson GSON = new Gson();
+
+    public static SSC JsonObjectToSSC(final JsonObject sscJsonObject) throws Exception {
+        final SSC ssc = new SSC(
+                GSON.fromJson(sscJsonObject.get("subspectrum"), Spectrum.class),
+                GSON.fromJson(sscJsonObject.get("assignment"), Assignment.class),
+                GSON.fromJson(sscJsonObject.get("substructure"), ExtendedConnectionMatrix.class).toAtomContainer(),
                 sscJsonObject.get("rootAtomIndex").getAsInt(),
                 sscJsonObject.get("maxSphere").getAsInt()
         );
@@ -55,12 +50,11 @@ public class SSCConverter {
         return ssc;
     }
     
-    public static SSC DocumentToSSC(final Document sscDocument) throws CDKException, CloneNotSupportedException{
-        final Gson gson = new Gson();
+    public static SSC DocumentToSSC(final Document sscDocument) throws Exception {
         final SSC ssc = new SSC(
-                gson.fromJson(((Document) sscDocument.get("subspectrum")).toJson(), Spectrum.class),
-                gson.fromJson(((Document) sscDocument.get("assignment")).toJson(), Assignment.class),
-                gson.fromJson(((Document) sscDocument.get("substructure")).toJson(), ExtendedConnectionMatrix.class).toAtomContainer(),
+                GSON.fromJson(((Document) sscDocument.get("subspectrum")).toJson(), Spectrum.class),
+                GSON.fromJson(((Document) sscDocument.get("assignment")).toJson(), Assignment.class),
+                GSON.fromJson(((Document) sscDocument.get("substructure")).toJson(), ExtendedConnectionMatrix.class).toAtomContainer(),
                 sscDocument.getInteger("rootAtomIndex"),
                 sscDocument.getInteger("maxSphere")
                 );
@@ -69,15 +63,14 @@ public class SSCConverter {
         return ssc;
     }
     
-    public static Document SSCToDocument(final SSC ssc, final Long sscindex){
-        final Gson gson = new Gson();
-        final Document document = new Document();        
-        document.append("substructure", JSON.parse(gson.toJson(gson.toJsonTree(new ExtendedConnectionMatrix(ssc.getSubstructure()), ExtendedConnectionMatrix.class))));
-        document.append("subspectrum", JSON.parse(gson.toJson(gson.toJsonTree(ssc.getSubspectrum(), Spectrum.class))));
-        document.append("assignment", JSON.parse(gson.toJson(gson.toJsonTree(ssc.getAssignments(), Assignment.class))));
+    public static Document SSCToDocument(final SSC ssc, final Long sscIndex){
+        final Document document = new Document();
+        document.append("substructure", Document.parse(GSON.toJson(GSON.toJsonTree(new ExtendedConnectionMatrix(ssc.getSubstructure()), ExtendedConnectionMatrix.class))));
+        document.append("subspectrum", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getSubspectrum(), Spectrum.class))));
+        document.append("assignment", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getAssignments(), Assignment.class))));
         document.append("maxSphere", ssc.getMaxSphere());
         document.append("rootAtomIndex", ssc.getRootAtomIndex());
-        document.append("index", sscindex);
+        document.append("index", sscIndex);
         document.append("multSections", ssc.getMultiplicitySections());
         
         return document;
