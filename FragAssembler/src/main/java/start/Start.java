@@ -24,7 +24,6 @@ package start;
  * THE SOFTWARE.
  */
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import model.SSCLibrary;
 import org.apache.commons.cli.CommandLine;
@@ -33,7 +32,6 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
-import org.json.simple.parser.ParseException;
 import org.openscience.cdk.exception.CDKException;
 
 /**
@@ -46,34 +44,35 @@ public class Start {
     private int nThreads, nStarts, maxSphere, minMatchingSphere;
     private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON, removeDuplicates;
     private SSCLibrary sscLibrary;   
-    private ProcessQueriesJSON processQueriesJSON;
-    private ProcessQueriesMongoDB processQueriesMongoDB;
+    private ProcessQueries processQueries;
     private double shiftTol, matchFactorThrs;
-    public static double EQUIV_SIGNAL_THRS = 0.5;
+    public static double EQUIV_SIGNAL_THRS = 0.5, DUPLICATES_SHIFT_TOL = 5.0;
     public static int DECIMAL_PLACES = 2;
     
     public static final String SPECTRUM_PROPERTY = "Spectrum 13C 0";
     
-    public void start() throws FileNotFoundException, CDKException, CloneNotSupportedException, InterruptedException, IOException {                                                                    
+    public void start() throws Exception {
         if (this.useMongoDB) {
             final PrepareMongoDB prepareMongoDB = new PrepareMongoDB(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
             prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, this.removeDuplicates);
-            this.processQueriesMongoDB = new ProcessQueriesMongoDB(this.pathToQueriesFile, this.pathToOutputsFolder, this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, 
-                    this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
-            this.processQueriesMongoDB.process();
+            this.sscLibrary = new SSCLibrary();
         } else if (this.useJSON) {
             final PrepareJSONFile prepareJSONFile = new PrepareJSONFile(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
             this.sscLibrary = prepareJSONFile.prepare(this.pathToJSON,  this.removeDuplicates);
-            this.processQueriesJSON = new ProcessQueriesJSON(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
-            this.processQueriesJSON.process();
         } else {
             throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
         }
+        this.processQueries = new ProcessQueries(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
+        if (this.useMongoDB) {
+            this.processQueries.initMongoDBProcessing(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
+        }
+        this.processQueries.process();
+
         System.gc();
     }
     
     
-    private void parseArgs(String[] args) throws ParseException, org.apache.commons.cli.ParseException, CDKException {
+    private void parseArgs(String[] args) throws org.apache.commons.cli.ParseException, CDKException {
         final Options options = setupOptions(args);
         final CommandLineParser parser = new DefaultParser();
         try {
@@ -302,7 +301,7 @@ public class Start {
         Option removeDuplicatesOption = Option.builder("nd")
                 .required(false)
                 .longOpt("noduplicates")
-                .desc("If given, the SSC library to build/extend will contain no structural duplicates.")
+                .desc("If given, the SSC library to build/extend will contain no structural duplicates with similar chemical shifts (deviations smaller than " + Start.DUPLICATES_SHIFT_TOL + " ppm).")
                 .build();
         options.addOption(removeDuplicatesOption);
         Option pathToJSONLibraryOption = Option.builder("j")
@@ -323,8 +322,10 @@ public class Start {
         try {
             start.parseArgs(args);
             start.start();
-        } catch (IOException | CloneNotSupportedException | InterruptedException | org.apache.commons.cli.ParseException | ParseException | CDKException e) {
+        } catch (IOException | CloneNotSupportedException | InterruptedException | org.apache.commons.cli.ParseException | CDKException e) {
             System.err.println(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
     }                
