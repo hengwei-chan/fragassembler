@@ -66,7 +66,7 @@ public class PrepareJSONFile {
                 this.tm.start();
                 this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, m, offset);
                 if (removeDuplicates) {
-                    this.sscLibrary.removeDuplicates();
+                    this.sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
                 }
                 System.out.println("SSCs for " + m + "-spheres build!!!");
                 this.tm.stop();
@@ -96,7 +96,7 @@ public class PrepareJSONFile {
                 this.tm.start();
                 this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, maxSphere, offset);
                 if (removeDuplicates) {
-                    this.sscLibrary.removeDuplicates();
+                    this.sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
                 }
                 System.out.println("SSCs for " + this.maxSphere + "-spheres build and added!!!");
                 this.tm.stop();

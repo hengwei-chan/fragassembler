@@ -23,12 +23,11 @@
  */
 package start;
 
-import casekit.NMR.DB;
+import casekit.NMR.dbservice.MongoDB;
 import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
 import java.io.FileNotFoundException;
-import java.util.Collections;
 import model.SSCLibrary;
 import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
@@ -66,8 +65,8 @@ public class PrepareMongoDB {
     public void prepare(final String mongoUser, final String mongoPassword, 
             final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection, final boolean removeDuplicates) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException {
         
-        this.mongo = DB.login(mongoUser, mongoPassword, mongoAuthDB);
-        this.collection = DB.getCollection(this.mongo, mongoDBName, mongoDBCollection);
+        this.mongo = MongoDB.login(mongoUser, mongoPassword, mongoAuthDB);
+        this.collection = MongoDB.getCollection(this.mongo, mongoDBName, mongoDBCollection);
         this.sscLibrary = new SSCLibrary(this.nThreads);
         if (this.importFromNMRShiftDB) {
             // empty MongoDB collection
@@ -84,7 +83,7 @@ public class PrepareMongoDB {
                 this.tm.start();
                 this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, m, offset);
                 if(removeDuplicates){
-                    this.sscLibrary.removeDuplicates();
+                    this.sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
                 }
                 System.out.println("SSCs for " + m + "-spheres build!!!");
                 this.tm.stop();
@@ -106,7 +105,7 @@ public class PrepareMongoDB {
             this.tm.start();
             this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, this.maxSphere, offset);
             if(removeDuplicates){
-                this.sscLibrary.removeDuplicates();
+                this.sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
             }
             System.out.println("SSCs for " + this.maxSphere + "-spheres build!!!");
             this.tm.stop();
@@ -119,7 +118,7 @@ public class PrepareMongoDB {
             this.tm.stop();
             System.out.println("--> time needed: " + this.tm.getResult() + " s");
         }           
-        DB.logout(this.mongo);
+        MongoDB.logout(this.mongo);
         
     }
 }
