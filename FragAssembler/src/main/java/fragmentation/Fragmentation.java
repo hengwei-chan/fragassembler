@@ -24,6 +24,7 @@
 package fragmentation;
 
 import hose.HOSECodeBuilder;
+import hose.model.ConnectionTree;
 import model.SSC;
 import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
@@ -57,7 +58,7 @@ public class Fragmentation {
      * @throws java.lang.InterruptedException
      * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.CloneNotSupportedException
-     * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
+     * @see Fragmentation#buildSSCs(Object[], int, long)
      */
     public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads) throws InterruptedException, CDKException, CloneNotSupportedException {                
         return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxNoOfSpheres, nThreads, 0);
@@ -77,7 +78,7 @@ public class Fragmentation {
      * @throws java.lang.InterruptedException
      * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.CloneNotSupportedException
-     * @see Fragmentation#buildSSCs(org.openscience.cdk.interfaces.IAtomContainer, int, java.lang.String, java.lang.String) 
+     * @see Fragmentation#buildSSCs(Object[], int, long)
      */
     public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads, final long offset) throws InterruptedException, CDKException, CloneNotSupportedException {
         // initialize an executor
@@ -127,7 +128,7 @@ public class Fragmentation {
      * @param offsetSSCIndex  offset value for indexing each new built SSC
      * @return
      * @throws java.lang.CloneNotSupportedException
-     * @see Fragmentation#buildSSC(org.openscience.cdk.interfaces.IAtomContainer, int, int, java.lang.String, java.lang.String) 
+     * @see Fragmentation#buildSSC(IAtomContainer, Spectrum, Assignment, int, int)
      */
     private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxNoOfSpheres, final long offsetSSCIndex) throws CloneNotSupportedException, CDKException {
         final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];        
@@ -210,13 +211,13 @@ public class Fragmentation {
         }
         subspectrum.setSolvent(spectrum.getSolvent());
         subspectrum.setSpectrometerFrequency(spectrum.getSpectrometerFrequency());
-        Utils.setSpectrumEquivalences(subspectrum);
+        subspectrum.detectEquivalences();
 
         // tries to return a valid SSC with all complete information
         // if something is missing/incomplete then null will be returned 
         try {
             return new SSC(subspectrum, subassignment, substructure, 0, maxNoOfSpheres);
-        } catch (CloneNotSupportedException | CDKException e) {
+        } catch (Exception e) {
             return null;
         }         
     }
@@ -232,8 +233,8 @@ public class Fragmentation {
      * all directions
      * @return
      * @throws org.openscience.cdk.exception.CDKException
-     * @see HOSECodeBuilder#buildConnectionTree(org.openscience.cdk.interfaces.IAtomContainer, int, int) 
-     * @see HOSECodeBuilder#buildAtomContainer(model.ConnectionTree) 
+     * @see HOSECodeBuilder#buildConnectionTree(IAtomContainer, int, Integer)
+     * @see HOSECodeBuilder#buildAtomContainer(ConnectionTree)
      */
     public static IAtomContainer buildSubstructure(final IAtomContainer structure, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException {
         return HOSECodeBuilder.buildAtomContainer(HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxNoOfSpheres));
@@ -250,7 +251,7 @@ public class Fragmentation {
      * all directions
      * @return
      * @throws org.openscience.cdk.exception.CDKException
-     * @see HOSECodeBuilder#buildConnectionTree(org.openscience.cdk.interfaces.IAtomContainer, int, int) 
+     * @see HOSECodeBuilder#buildConnectionTree(IAtomContainer, int, Integer)
      */
     public static LinkedHashSet<Integer> buildSubstructureAtomIndicesSet(final IAtomContainer structure, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException {
         return HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxNoOfSpheres).getKeys(true);
