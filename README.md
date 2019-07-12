@@ -60,15 +60,14 @@ The following are the arguments with which you can start FragAssembler:
            <arg> -q <arg> -tol <arg> -mft <arg> [-min <arg>] [-o <arg>] [-nt
            <arg>] [-ns <arg>] [-import] [-extend] [-nmrshiftdb <arg>]
            [-maxsphere <arg>] [-u <arg>] [-p <arg>] [-a <arg>] [-db <arg>] [-c
-           <arg>] [-nd] [-j <arg>]    
+           <arg>] [-nd] [-j <arg>]
     
      -f,--format <arg>          Format to use:
                                 case 1: "j" for JSON. The parameter "j" has to
                                 be set.
                                 case 2: "m" for MongoDB. The parameters "u",
                                 "p", "a", "db" and "c" have to be set.
-     -q,--query <arg>           Path to a file containing the query spectra in
-                                NMRShiftDB format. One spectrum for each line.
+     -q,--query <arg>           Path to a file containing the query spectra.
      -tol,--tolerance <arg>     Tolerance value for shift matching.
      -mft,--mfthreshold <arg>   Threshold value for maximum match factor.
      -min,--minsphere <arg>     Minimum matching sphere count. The default is
@@ -130,16 +129,43 @@ The number of start SSCs in assembly process is limited to 5. For parallelizatio
 
 The queries file with query spectra in NMRShiftDB spectrum format looks like:
 
-    // 10016316 coffein
-    27.8;0.0Q;9|29.6;0.0Q;10|33.5;0.0Q;11|107.8;0.0S;5|144.3;0.0D;7|147.5;0.0S;4|151.6;0.0S;2|155.3;0.0S;0|
-    // 2205 Methyl 4-(4-carboxyphenyl)-6-chloro-5-formyl-2-methyl-1,4-dihydropyridine-3-carboxylate 
-    17.8;0.0Q;19|37.7;0.0D;0|51.2;0.0Q;18|104.1;0.0S;1|110.7;0.0S;5|127.0;0.0D;7|127.0;0.0D;9|128.9;0.0D;6|128.9;0.0D;10|132.7;0.0S;11|142.9;0.0S;4|145.8;0.0S;2|148.5;0.0S;8|166.5;0.0S;15|167.9;0.0S;12|186.5;0.0D;21|
+    //  10016316 coffein
+    13C, 27.8, Q, 0.0
+    13C, 29.6, Q, 0.0
+    13C, 33.5, Q, 0.0
+    13C, 107.8, S, 0.0
+    13C, 144.3, D, 0.0
+    13C, 147.5, S, 0.0
+    13C, 151.6, S, 0.0
+    13C, 155.3, S, 0.0
+    
+    //  2205 Methyl 4-(4-carboxyphenyl)-6-chloro-5-formyl-2-methyl-1,4-dihydropyridine-3-carboxylate 
+    13C, 17.8, Q, 0.0
+    13C, 37.7, D, 0.0
+    13C, 51.2, Q, 0.0
+    13C, 104.1, S, 0.0
+    13C, 110.7, S, 0.0
+    13C, 127.0, D, 0.0
+    13C, 127.0, D, 0.0
+    13C, 128.9, D, 0.0
+    13C, 128.9, D, 0.0
+    13C, 132.7, S, 0.0
+    13C, 142.9, S, 0.0
+    13C, 145.8, S, 0.0
+    13C, 148.5, S, 0.0
+    13C, 166.5, S, 0.0
+    13C, 167.9, S, 0.0
+    13C, 186.5, D, 0.0
 
-That input format will change soon. <br>
+At the moment, only 13C 1D NMR spectra are allowed as queries. <br>
+Each query spectrum starts with "//" and a description for the it. 
+Then in the signal list, each signal nucleus is followed by the chemical shift, 
+the multiplicity and the intensity. <br>
+Two query spctra are separated by an empty line.
 
 One of the output file lines for coffein query spectrum looks like:
 
     CN1C=NC2=C1C(=O)N(C)C(=O)N2C 0 1.0
 
-It means for a re-assembled structure (SMILES) it has the highest rank (0) because of its Tanimoto coefficient 
-of 1.0 regarding the query spectrum.
+It means for a assembled structure (SMILES) it has the highest rank (0) with a Tanimoto coefficient 
+of 1.0 regarding the assembled spectrum of the result and the query spectrum.
