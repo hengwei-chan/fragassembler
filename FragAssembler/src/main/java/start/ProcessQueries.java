@@ -18,6 +18,7 @@ import casekit.NMR.Utils;
 import casekit.NMR.dbservice.MongoDB;
 import casekit.NMR.dbservice.NMRShiftDB;
 import casekit.NMR.match.Matcher;
+import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import com.google.gson.Gson;
 import com.mongodb.MongoClient;
@@ -91,40 +92,65 @@ public class ProcessQueries {
         this.useMongoDB = true;
     }
 
-    public void process() throws Exception {
-        Spectrum querySpectrum;
-        final SSCRanker sscRanker = new SSCRanker(this.sscLibrary, this.nThreads);
+//    public static Spectrum basicTextSpectrumToSpectrum(final String basicSpectrum){
+//        basicSpectrum.
+//        final Iterator<String> it = this.br.lines().iterator();
+//        String line;
+//        while (it.hasNext()) {
+//            line = it.next();
+//            if (line.startsWith("//")) {
+//                continue;
+//            }
+//            if (line.startsWith("#")) {
+//                System.out.println("\n\nskip query: " + querySpectrumCounter + " -> " + line + "\n");
+//                querySpectrumCounter++;
+//                continue;
+//            }
+//        }
+//    }
 
-        int querySpectrumCounter = 0;
+    public void process() throws Exception {
 
         System.out.println("\n\n-> processing query file: \"" + this.pathToQueriesFile + "\" ...");
 
-        Iterator<String> it = this.br.lines().iterator();
+        final SSCRanker sscRanker = new SSCRanker(this.sscLibrary, this.nThreads);
+
+        int querySpectrumCounter = 0;
+        Spectrum querySpectrum = new Spectrum(new String[]{"13C"});
+        final Iterator<String> it = this.br.lines().iterator();
         String line;
+        String[] signalProperties;
+        // process every query spectrum in queries file
         while (it.hasNext()) {
             line = it.next();
-            if (line.startsWith("//")) {
-                continue;
+            if (line.trim().startsWith("//")) {
+                // create new query spectrum with description
+                querySpectrum = new Spectrum(new String[]{"13C"});
+                querySpectrum.setSpecDescription(line.split("//")[1].trim());
+                while (it.hasNext()){
+                    line = it.next();
+                    if(line.trim().isEmpty()){
+                        break;
+                    }
+                    signalProperties = line.trim().split(",");
+                    querySpectrum.addSignal(new Signal(querySpectrum.getNuclei(), new Double[]{Double.parseDouble(signalProperties[1].trim())}, signalProperties[2].trim(), Double.parseDouble(signalProperties[3].trim())));
+                }
+                querySpectrum.detectEquivalences();
             }
-            if (line.startsWith("#")) {
-                System.out.println("\n\nskip query: " + querySpectrumCounter + " -> " + line + "\n");
-                querySpectrumCounter++;
-                continue;
-            }
-            System.out.println("\n\nnow processing query: " + querySpectrumCounter + " -> " + line + "\n");
-
-            querySpectrum = NMRShiftDB.NMRShiftDBSpectrumToSpectrum(line, "13C");
-            System.out.println("\nquery spectrum:\t" + querySpectrum.getShifts(0)
-                    + "\nequivalents:\t" + querySpectrum.getEquivalences()
-                    + "\nmultiplicities:\t" + querySpectrum.getMultiplicities()
+            System.out.println("\n\nnow processing query: " + querySpectrumCounter + " -> " + querySpectrum.getSpecDescription() + "\n");
+            System.out.println("\nquery spectrum: " + querySpectrum.getShifts(0)
+                    + "\nmultiplicities: " + querySpectrum.getMultiplicities()
+                    + "\nintensities   : " + querySpectrum.getIntensities()
+                    + "\nequivalents   : " + querySpectrum.getEquivalences()
                     + "\nequivalent signals classes: " + querySpectrum.getEquivalentSignalClasses());
 
+            // if MongoDB is used then a fast presearch can be done to reduce the amount of SSC to check
             if(this.useMongoDB){
                 this.presearch(querySpectrum);
             }
-
+            // main processing of the query spectrum against the SSC library
             this.processCore(sscRanker, querySpectrum, querySpectrumCounter);
-//
+
             querySpectrumCounter++;
         }
         this.br.close();
@@ -146,11 +172,11 @@ public class ProcessQueries {
         } else {
             nStartSSCs = rankedSSCLibrary.getSSCCount();
         }
-//        System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
+        System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
         final HashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol);
 
-//        System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + line + "):\t" + solutions.size());
+        System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + querySpectrum.getSpecDescription() + "):\t" + solutions.size());
 
         final String[] solutionsSMILESToSort = new String[solutions.size()];
         int solutionsCounter = 0;
