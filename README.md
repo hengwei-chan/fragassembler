@@ -159,7 +159,7 @@ The queries file with query spectra in NMRShiftDB spectrum format looks like:
 
 At the moment, only 13C 1D NMR spectra are allowed as queries. <br>
 Each query spectrum starts with "//" and a description for the it. 
-Then in the signal list, each signal nucleus is followed by the chemical shift, 
+Then, in the signal list, each signal nucleus is followed by the chemical shift, 
 the multiplicity and the intensity. <br>
 Two query spctra are separated by an empty line.
 
