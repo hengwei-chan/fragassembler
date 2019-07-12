@@ -193,7 +193,7 @@ public class Start {
                 .required(true)
                 .hasArg()
                 .longOpt("query")
-                .desc("Path to a file containing the query spectra in NMRShiftDB format. One spectrum for each line.")
+                .desc("Path to a file containing the query spectra.")
                 .build();
         options.addOption(pathToQueryFileOption);    
         Option shiftTolOption = Option.builder("tol")
