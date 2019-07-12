@@ -167,5 +167,5 @@ One of the output file lines for coffein query spectrum looks like:
 
     CN1C=NC2=C1C(=O)N(C)C(=O)N2C 0 1.0
 
-It means for a assembled structure (SMILES) it has the highest rank (0) with a Tanimoto coefficient 
+It means for an assembled structure (SMILES) it has the highest rank (0) with a Tanimoto coefficient 
 of 1.0 regarding the assembled spectrum of the result and the query spectrum.
