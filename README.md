@@ -161,7 +161,7 @@ At the moment, only 13C 1D NMR spectra are allowed as queries. <br>
 Each query spectrum starts with "//" and a description for the it. 
 Then, in the signal list, each signal nucleus is followed by the chemical shift, 
 the multiplicity and the intensity. <br>
-Two query spctra are separated by an empty line.
+Two query spectra are separated by an empty line.
 
 One of the output file lines for coffein query spectrum looks like:
 
