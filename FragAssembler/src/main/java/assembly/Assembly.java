@@ -264,7 +264,6 @@ public class Assembly {
             }
             // findHits overlaps in current max. sphere by (1) mean of deviations and (2) total number of overlapping atoms
             overlapsInSphere = overlapsInSpheres.get(m);
-            System.out.println(" -> overlapsInSphere: " + overlapsInSphere);
             overlapsInSphere.sort((entry1, entry2) -> {
                 int deviationsComp;// = ((entry1[3] == null) || (entry2[3] == null)) ? 0 : Double.compare(entry1[3], entry2[3]);
                 if((entry1[3] == null) || (entry2[3] == null)){
