@@ -171,10 +171,10 @@ public class Start {
             // TODO Auto-generated catch block
             HelpFormatter formatter = new HelpFormatter();
             formatter.setOptionComparator(null);
-            String header = "Space for a header.\n\n";
-            String footer = "\nSpace for a footer.";
-            formatter.printHelp("java -jar something", header, options, footer, true);
-            throw new org.apache.commons.cli.ParseException("Problem parsing command line");
+            String header = "FragAssembler aims on the computer-assisted structure elucidation of (un)known compounds by re-assembling known fragments of a dedicated library, solely based on given 13C NMR information. .\n\n";
+            String footer = "\nPlease report issues at https://github.com/michaelwenk/FragAssembler.";
+            formatter.printHelp("java -jar FragAssembler-1.0-SNAPSHOT-jar-with-dependencies.jar", header, options, footer, true);
+            throw new org.apache.commons.cli.ParseException("Problem at parsing command line!!!");
         }
     }
 
