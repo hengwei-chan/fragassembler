@@ -244,7 +244,7 @@ public class Assembly {
      * 
      * @see #getOverlapsHOSECode(model.SSC, model.SSC, int, double) 
      */
-    public static HashMap<Integer, Integer> mapOverlapsHOSECode(final SSC ssc1, final SSC ssc2, final HashMap<Integer, ArrayList<Double[]>> overlapsInSpheres) throws CDKException{
+    public static HashMap<Integer, Integer> getAtomMappingsHOSECode(final SSC ssc1, final SSC ssc2, final HashMap<Integer, ArrayList<Double[]>> overlapsInSpheres) throws CDKException{
         // insertion of all valid mappings in different spheres into one map, 
         // starting with highest matching sphere (higher chance of correctness)
         if (overlapsInSpheres.isEmpty()) {
@@ -502,7 +502,7 @@ public class Assembly {
 //        // 1.1 map structural overlaps in all spheres separately
 //        final HashMap<Integer, ArrayList<Double[]>> overlapsInSpheres = Assembly.getOverlapsHOSECode(ssc2, ssc1, minMatchingSphereCount, shiftTol);
 //        // 1.2 insertion of all valid mappings in different spheres into one map
-//        mappedAtomIndices = Assembly.mapOverlapsHOSECode(ssc2, ssc1, overlapsInSpheres);
+//        mappedAtomIndices = Assembly.getAtomMappingsHOSECode(ssc2, ssc1, overlapsInSpheres);
 //        if (mappedAtomIndices.isEmpty()) {
 //            return null;
 //        }
@@ -956,7 +956,7 @@ public class Assembly {
         // 1. check for partial structural identity (overlaps)
         // map structural overlaps in all spheres separately and
         // insertion of all valid mappings in different spheres into one map
-        HashMap<Integer, Integer> atomMappings = Assembly.mapOverlapsHOSECode(ssc1, ssc2, Assembly.getOverlapsHOSECode(ssc1, ssc2, minMatchingSphereCount, shiftTol));
+        HashMap<Integer, Integer> atomMappings = Assembly.getAtomMappingsHOSECode(ssc1, ssc2, Assembly.getOverlapsHOSECode(ssc1, ssc2, minMatchingSphereCount, shiftTol));
         System.out.println("-> mapped atoms     : " + atomMappings);
 
         // @TODO use parameter "shiftTol" from solvent effect deviations?
