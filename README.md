@@ -124,7 +124,7 @@ This command above starts FragAssembler with a queries file "queries.txt" and th
 results folder. The chosen format is JSON and the NMRShiftDB.sdf is used to create a new SSC library (-import) with 
 SSCs with a maximum limit of 3 spheres for each root atom. The SSC library is stored in the ssclibrary.json file. <br> 
 Between the chemical shifts of two signals a tolerance of 4 ppm is allowed but in average the
-shift deviations of all matched signals between two spectra must not be higher than 3.0 ppm. <br>
+shift deviations of all matched signals between two spectra (match factor) must not be higher than 3.0 ppm. <br>
 The number of start SSCs in assembly process is limited to 5. For parallelization, two threads are allowed for this job.
 
 The queries file with query spectra in NMRShiftDB spectrum format looks like:
