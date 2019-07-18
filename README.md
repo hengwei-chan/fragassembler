@@ -123,7 +123,7 @@ The following are the arguments with which you can start FragAssembler (an examp
 
 Lets have look on the following example:
 
-    java -jar /target/FragAssembler-jar-with-dependencies.jar -q queries.txt -o results/ -f j -j ssclibrary.json -import -nmrshiftdb NMRShiftDB.sdf -maxsphere 3 -tol 4.0 -mft 3.0 -nt 2 -ns 5 
+    java -jar /target/FragAssembler-jar-with-dependencies.jar -q /PATH/TO/queries.txt -o PATH/TO/results/ -f j -j ssclibrary.json -import -nmrshiftdb /PATH/TO/NMRShiftDB.sdf -maxsphere 3 -tol 4.0 -mft 3.0 -nt 2 -ns 5 
 
 This command above starts FragAssembler with a queries file "queries.txt" and the results should be stored in a
 results folder. The chosen format is JSON and the NMRShiftDB.sdf is used to create a new SSC library (-import) with 
