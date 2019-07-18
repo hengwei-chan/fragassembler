@@ -36,7 +36,12 @@ The result is a list of assembled structure proposals for a query spectrum in a 
 
 The packages HOSECodeBuilder (https://github.com/michaelwenk/HOSECodeBuilder) and 
 casekit (https://github.com/michaelwenk/casekit) have to be installed on the local machine. Both of them
-are dependencies in FragAssemblers pom.xml and have to ready to use, e.g. in Maven's .m2 folder. 
+are dependencies in FragAssemblers pom.xml and have to ready to use, e.g. in Maven's .m2 folder. <br>
+That can be done with commands like:
+
+    
+    mvn install:install-file -Dfile=PATH/TO/HOSECodeBuilder-1.0-SNAPSHOT-jar-with-dependencies.jar -DgroupId=org.openscience -DartifactId=HOSECodeBuilder -Dversion=1.0 -Dpackaging=jar
+    mvn install:install-file -Dfile=PATH/TO/casekit-1.0-SNAPSHOT-jar-with-dependencies.jar -DgroupId=org.openscience -DartifactId=casekit -Dversion=1.0 -Dpackaging=jar 
 
 ### Installation
 
