@@ -36,7 +36,7 @@ The result is a list of assembled structure proposals for a query spectrum in a 
 
 The packages HOSECodeBuilder (https://github.com/michaelwenk/HOSECodeBuilder) and 
 casekit (https://github.com/michaelwenk/casekit) have to be installed on the local machine. Both of them
-are dependencies in FragAssemblers pom.xml and have to ready to use, e.g. in Maven's .m2 folder. <br>
+are dependencies in FragAssembler's pom.xml and have to ready to use, e.g. in Maven's .m2 folder. <br>
 That can be done with commands like:
 
     
@@ -59,7 +59,7 @@ That can be done with commands like:
 
 ### Usage
 
-The following are the arguments with which you can start FragAssembler:
+The following are the arguments with which you can start FragAssembler (an example is given below):
 
     usage: java -jar FragAssembler-1.0-SNAPSHOT-jar-with-dependencies.jar -f
            <arg> -q <arg> -tol <arg> -mft <arg> [-min <arg>] [-o <arg>] [-nt
