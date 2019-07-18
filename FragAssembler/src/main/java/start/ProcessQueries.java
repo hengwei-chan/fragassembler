@@ -16,7 +16,6 @@ import analysis.MultiplicitySectionsBuilder;
 import assembly.Assembly;
 import casekit.NMR.Utils;
 import casekit.NMR.dbservice.MongoDB;
-import casekit.NMR.dbservice.NMRShiftDB;
 import casekit.NMR.match.Matcher;
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
@@ -199,7 +198,7 @@ public class ProcessQueries {
         final ArrayList<Double> sortedQuerySpectrumShifts = querySpectrum.getShifts(0);
         Collections.sort(sortedQuerySpectrumShifts);
 
-        final SmilesParser smilesParser = new SmilesParser(new SilentChemObjectBuilder());
+        final SmilesParser smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         String smiles;
         IAtomContainer solutionAtomContainer;
         ArrayList<Double> sortedSolutionSpectrumShifts;
