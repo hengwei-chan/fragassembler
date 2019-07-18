@@ -715,7 +715,6 @@ public final class SSCLibrary {
                 }
             }
         }
-        System.out.println("to remove: " + duplicatesSSCIndices);
         // remove all duplicates
         for (final long duplicatesSSCIndex : duplicatesSSCIndices) {            
             this.remove(duplicatesSSCIndex);
