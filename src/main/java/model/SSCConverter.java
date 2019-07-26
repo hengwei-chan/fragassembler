@@ -59,7 +59,7 @@ public class SSCConverter {
                 sscDocument.getInteger("maxSphere")
                 );
         ssc.setIndex(sscDocument.getLong("index"));
-        
+
         return ssc;
     }
     

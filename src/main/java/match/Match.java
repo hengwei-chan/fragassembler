@@ -97,8 +97,8 @@ public class Match {
         for (final ConnectionTreeNode nodeInSphere1 : connectionTree1.getNodesInSphere(sphere)) {
             // search for nodes from conn. tree 2 in conn. tree 1; if found then add it to map
             for (final ConnectionTreeNode nodeInSphere2 : connectionTree2.getNodesInSphere(sphere)) {
-                signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodeInSphere1.getKey()));
-                signal2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodeInSphere2.getKey()));
+                signal1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, nodeInSphere1.getKey()));
+                signal2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeInSphere2.getKey()));
                 if (!map.containsValue(nodeInSphere2.getKey()) && Match.isEqualNode(nodeInSphere1, nodeInSphere2, signal1, signal2, shiftTol)) {
                     map.put(nodeInSphere1.getKey(), nodeInSphere2.getKey());
                     break;

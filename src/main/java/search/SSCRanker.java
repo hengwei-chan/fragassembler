@@ -213,7 +213,7 @@ public final class SSCRanker {
                     return null;
                 }
                 final Spectrum matchedQuerySubspectrum = new Spectrum(querySpectrum.getNuclei());
-                for (final int signalIndexInQuerySpectrum : matchAssignment.getAtomIndices(0)) {
+                for (final int signalIndexInQuerySpectrum : matchAssignment.getAssignments(0)) {
                     matchedQuerySubspectrum.addSignal(querySpectrum.getSignal(signalIndexInQuerySpectrum));
                 }
                 final HashMap<Long, Object[]> tempHashMap = new HashMap<>();

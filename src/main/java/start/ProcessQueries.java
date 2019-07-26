@@ -115,7 +115,7 @@ public class ProcessQueries {
         final SSCRanker sscRanker = new SSCRanker(this.sscLibrary, this.nThreads);
 
         int querySpectrumCounter = 0;
-        Spectrum querySpectrum = new Spectrum(new String[]{"13C"});
+        Spectrum querySpectrum = new Spectrum(new String[]{Start.SIGNAL_NUCLEUS});
         final Iterator<String> it = this.br.lines().iterator();
         String line;
         String[] signalProperties;
@@ -124,7 +124,7 @@ public class ProcessQueries {
             line = it.next();
             if (line.trim().startsWith("//")) {
                 // create new query spectrum with description
-                querySpectrum = new Spectrum(new String[]{"13C"});
+                querySpectrum = new Spectrum(new String[]{Start.SIGNAL_NUCLEUS});
                 querySpectrum.setSpecDescription(line.split("//")[1].trim());
                 while (it.hasNext()){
                     line = it.next();
@@ -132,6 +132,10 @@ public class ProcessQueries {
                         break;
                     }
                     signalProperties = line.trim().split(",");
+                    if(!signalProperties[0].trim().equals(Start.SIGNAL_NUCLEUS)){
+                        System.out.println("Query spectrum " + querySpectrumCounter + " contains a signal with different nucleus!!!");
+                        continue;
+                    }
                     querySpectrum.addSignal(new Signal(querySpectrum.getNuclei(), new Double[]{Double.parseDouble(signalProperties[1].trim())}, signalProperties[2].trim(), Double.parseDouble(signalProperties[3].trim())));
                 }
                 querySpectrum.detectEquivalences();

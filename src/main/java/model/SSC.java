@@ -238,7 +238,7 @@ public final class SSC {
         }
         if(!this.HOSECodeLookupIndices.get(HOSECode).contains(atomIndexInSubstructure)){
             this.HOSECodeLookupIndices.get(HOSECode).add(atomIndexInSubstructure);
-            final Integer signalIndex = this.assignment.getSignalIndex(0, atomIndexInSubstructure);
+            final Integer signalIndex = this.assignment.getIndex(0, atomIndexInSubstructure);
             if (signalIndex != null) {
                 final Signal signal = this.subspectrum.getSignal(signalIndex);
                 if ((signal != null) && (signal.getShift(0) != null)) {

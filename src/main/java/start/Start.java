@@ -24,15 +24,11 @@ package start;
  * THE SOFTWARE.
  */
 
-import java.io.IOException;
 import model.SSCLibrary;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
+import org.apache.commons.cli.*;
 import org.openscience.cdk.exception.CDKException;
+
+import java.io.IOException;
 
 /**
  *
@@ -48,8 +44,9 @@ public class Start {
     private double shiftTol, matchFactorThrs;
     public static double EQUIV_SIGNAL_THRS = 0.5, DUPLICATES_SHIFT_TOL = 5.0;
     public static int DECIMAL_PLACES = 2;
-    
-    public static final String SPECTRUM_PROPERTY = "Spectrum 13C 0";
+
+    public static final String SIGNAL_NUCLEUS = "13C";
+    public static final String SPECTRUM_PROPERTY = "Spectrum " + Start.SIGNAL_NUCLEUS + " 0";
     
     public void start() throws Exception {
         if (this.useMongoDB) {
@@ -73,6 +70,36 @@ public class Start {
     
     
     private void parseArgs(String[] args) throws org.apache.commons.cli.ParseException, CDKException {
+
+//        SmilesParser smilesParser = new SmilesParser(new SilentChemObjectBuilder());
+//        IAtomContainer ac = smilesParser.parseSmiles("FC1=CC=CC(Cl)=C1");
+//        ac.getAtom(2).setImplicitHydrogenCount(0);
+//        IAtomContainer ac2 = smilesParser.parseSmiles("OC(=O)C1=C(F)C=CC=C1");//OC(=O)C1=C(F)C=C(Cl)C=C1
+//        ac2.getAtom(7).setImplicitHydrogenCount(0);
+//        try {
+//            Utils.generatePicture(ac, "/Users/mwenk/Downloads/ac.png");
+//            for (int i = 0; i < ac.getAtomCount(); i++) {
+//                System.out.println(i + " -> " + HOSECodeBuilder.buildHOSECode(ac, i, 2, false));
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        System.out.println();
+//        try {
+//            Utils.generatePicture(ac2, "/Users/mwenk/Downloads/ac2.png");
+//            for (int i = 0; i < ac2.getAtomCount(); i++) {
+//                System.out.println(i + " -> " + HOSECodeBuilder.buildHOSECode(ac2, i, 2, false));
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        IAtomContainer ac3 = smilesParser.parseSmiles("OC(=O)C1=C(F)C=C(Cl)C=C1");
+//        try {
+//            Utils.generatePicture(ac3, "/Users/mwenk/Downloads/ac3.png");
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+
         final Options options = setupOptions(args);
         final CommandLineParser parser = new DefaultParser();
         try {

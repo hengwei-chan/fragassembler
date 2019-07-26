@@ -72,7 +72,7 @@ public class Assembly {
         boolean stop, notValid;
         for (final int i : atomIndicesSSC1) {
             rootAtomSSC1 = ssc1.getSubstructure().getAtom(i);
-            signalRootAtomSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, i));
+            signalRootAtomSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, i));
             for (final int j : atomIndicesSSC2) {
                 rootAtomSSC2 = ssc2.getSubstructure().getAtom(j);
                 // check for same atom types
@@ -81,7 +81,7 @@ public class Assembly {
                 }
                 // get signals of both atoms to compare (if available) and check for same signal properties
                 // to set a starting point with higher probability to be correct
-                signalRootAtomSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, j));
+                signalRootAtomSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, j));
                 if ((signalRootAtomSSC1 != null) && (signalRootAtomSSC2 != null)
                         &&  (!signalRootAtomSSC1.getMultiplicity().equals(signalRootAtomSSC2.getMultiplicity())
                         || Math.abs(signalRootAtomSSC1.getShift(0) - signalRootAtomSSC2.getShift(0)) > shiftTol)
@@ -117,8 +117,8 @@ public class Assembly {
                     stop = false;
                     // check for same/similar signal properties in same order as the belonging HOSE codes until max. matching sphere
                     for (int k = 0; k < nodeKeysInSphereToCheckSSC1.size(); k++) {
-                        signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodeKeysInSphereToCheckSSC1.get(k)));
-                        signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodeKeysInSphereToCheckSSC2.get(k)));
+                        signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, nodeKeysInSphereToCheckSSC1.get(k)));
+                        signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeKeysInSphereToCheckSSC2.get(k)));
                         if ((signalSSC1 != null) && (signalSSC2 != null)
                                 && (!signalSSC1.getMultiplicity().equals(signalSSC2.getMultiplicity()) || Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol)) {
                             stop = true;
@@ -157,8 +157,8 @@ public class Assembly {
                         if (!nodesInSphereSSC1.get(k).isRingClosureNode()) {
                             overlappingAtomsCount++;
                         }
-                        signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, nodesInSphereSSC1.get(k).getKey()));
-                        signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, nodesInSphereSSC2.get(k).getKey()));
+                        signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, nodesInSphereSSC1.get(k).getKey()));
+                        signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodesInSphereSSC2.get(k).getKey()));
                         if((signalSSC1 != null) && (signalSSC2 != null)){
                             deviations.add(Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)));
                         }
@@ -333,8 +333,8 @@ public class Assembly {
         }
         // filter for multiple assignments
         // there might be multiple assignments to same signals, so check for possible symmetry (equivalences)
-        for (final int matchedSignalIndexInQuerySpectrum : matchAssignments.getAtomIndices(0)) {
-            if (Collections.frequency(matchAssignments.getAtomIndices(0), matchedSignalIndexInQuerySpectrum)
+        for (final int matchedSignalIndexInQuerySpectrum : matchAssignments.getAssignments(0)) {
+            if (Collections.frequency(matchAssignments.getAssignments(0), matchedSignalIndexInQuerySpectrum)
                     > querySpectrum.getEquivalentSignals(matchedSignalIndexInQuerySpectrum).size() + 1) { 
                 // note: + 1 to query spectrum equ. signal count, because in frequencies count the requested (equ.) signal always occurs at least once and in query spectrum equ. signal count it could be zero
 //                System.out.println("-> equivalences not allowed!!!");
@@ -665,6 +665,7 @@ public class Assembly {
         // notice: clone (!!!) the SSC contents only; don't use the object (reference) itself because of modifications
         startSSC = rankedSSCLibrary.getSSC(startSSCIndex).getClone();
         intermediate = startSSC.getClone();
+        intermediate.setIndex(startSSCIndex);
         // check whether the current SSC is already a final SSC
         if (Assembly.isFinalSSC(intermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
             structureAsSMILES = smilesGenerator.create(intermediate.getSubstructure());
@@ -696,6 +697,7 @@ public class Assembly {
             intermediate = Assembly.assemblyCore(intermediate.getClone(), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
             if (intermediate == null) {
                 intermediate = backupSSC.getClone();
+                intermediate.setIndex(startSSCIndex);
                 continue;
             }
 
@@ -718,6 +720,7 @@ public class Assembly {
                 }
 
                 intermediate = startSSC.getClone();//backupSSC1.getClone();
+                intermediate.setIndex(startSSCIndex);
 //                continue;
             }
             
@@ -742,7 +745,7 @@ public class Assembly {
 
 
 
-    private static HashMap<Integer, Integer> getAtomMappings(final SSC ssc1, final SSC ssc2, final List<RMap> subgraph) throws CDKException {
+    private static HashMap<Integer, Integer> getAtomMappingsMCSS(final SSC ssc1, final SSC ssc2, final List<RMap> subgraph) throws CDKException {
         final HashMap<Integer, Integer> atomMappingsTemp = new HashMap<>(), atomMappings = new HashMap<>();
         final UniversalIsomorphismTester universalIsomorphismTester = new UniversalIsomorphismTester();
         final IAtomContainer overlap = UniversalIsomorphismTester.project(subgraph, ssc1.getSubstructure(),0);
@@ -763,8 +766,8 @@ public class Assembly {
     }
 
     private static boolean isValidAtomMapping(final SSC ssc1, final SSC ssc2, final int atomIndexSSC1, final int atomIndexSSC2, final double shiftTol){
-        Signal signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getSignalIndex(0, atomIndexSSC1));
-        Signal signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, atomIndexSSC2));
+        final Signal signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, atomIndexSSC1));
+        final Signal signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, atomIndexSSC2));
         // check for similar signal properties
         // atoms with assigned signals
         if((signalSSC1 != null) && (signalSSC2 != null)){
@@ -878,7 +881,7 @@ public class Assembly {
 
                         // add belonging signal from SSC2 to SSC1
                         if (atomToAdd.getSymbol().equals(ssc1.getSubspectrumAtomType())) {
-                            signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getSignalIndex(0, connectedNodeInSphereToAddSSC2.getKey()));
+                            signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, connectedNodeInSphereToAddSSC2.getKey()));
                             if (signalToAddSSC2 == null) {
                                 return null;
                             }
@@ -918,7 +921,7 @@ public class Assembly {
         HashMap<Integer, Integer> atomMappingsTemp;
         for (final List<RMap> subgraph : subgraphList){
             try {
-                atomMappingsTemp = Assembly.getAtomMappings(ssc1, ssc2, subgraph);
+                atomMappingsTemp = Assembly.getAtomMappingsMCSS(ssc1, ssc2, subgraph);
             } catch (CDKException e) {
                 continue;
             }
@@ -948,9 +951,29 @@ public class Assembly {
 
     public static SSC assemblyCore(final SSC ssc1, final SSC ssc2, final Spectrum querySpectrum, final int minMatchingSphereCount, final double shiftTol, final double thrsMatchFactor) throws Exception {
 
+        final Assignment assignment = Matcher.matchSpectra(ssc2.getSubspectrum(), ssc1.getSubspectrum(), 0, 0, shiftTol);
+        System.out.println("-> between SSC " + ssc2.getIndex() + " (" + ssc2.getSubspectrum().getShifts(0) + ") and SSC " + ssc1.getIndex()  + " (" + ssc1.getSubspectrum().getShifts(0) + "):");
+        System.out.println(" --> match assignments: " + assignment.isFullyAssigned(0) + " -> " + assignment.getAssignments(0));
+        System.out.println(" ---> atom pairs: ");
+        HashMap<Integer, Integer> atomMappingsTemp = new HashMap<>();
+        for (int i = 0; i < assignment.getAssignmentsCount(); i++) {
+            System.out.println(ssc2.getAssignments().getAssignment(0, i) + " - " + ssc1.getAssignments().getAssignment(0, assignment.getAssignment(0, i)));
+            if(ssc1.getAssignments().getAssignment(0, assignment.getAssignment(0, i)) != null){
+                atomMappingsTemp.put(ssc1.getAssignments().getAssignment(0, assignment.getAssignment(0, i)), ssc2.getAssignments().getAssignment(0, i));
+            }
+        }
+        for (final Entry<Integer, Integer> entry : atomMappingsTemp.entrySet()){
+            if(ssc1.isUnsaturated(entry.getKey())){
+                System.out.println("-> mapped atoms     : " + entry.getKey() + " - " + entry.getValue());
+            }
+        }
+
+
+
+
 //        // 1. check for partial structural identity (overlaps)
-//        // atom mapping by most common (valid) subgraph
-//        HashMap<Integer, Integer> atomMappings = Assembly.getAtomMappings(ssc1, ssc2, Assembly.getMaximumCommonSubgraph(ssc1, ssc2, shiftTol));
+//        // atom mapping by maximum common (valid) subgraph
+//        HashMap<Integer, Integer> atomMappings = Assembly.getAtomMappingsMCSS(ssc1, ssc2, Assembly.getMaximumCommonSubgraph(ssc1, ssc2, shiftTol));
 
 
         // 1. check for partial structural identity (overlaps)
@@ -974,7 +997,7 @@ public class Assembly {
         for (final Entry<Integer, Integer> entry : atomMappings.entrySet()) {
             mappedAtomIndexSSC2 = entry.getValue();
             if (ssc2.getSubstructure().getAtom(mappedAtomIndexSSC2).getSymbol().equals(ssc1.getSubspectrumAtomType())) {
-                signalIndicesToIgnoreFromSubspectrumSSC2.add(ssc2.getAssignments().getSignalIndex(0, mappedAtomIndexSSC2));
+                signalIndicesToIgnoreFromSubspectrumSSC2.add(ssc2.getAssignments().getIndex(0, mappedAtomIndexSSC2));
             }
         }
         final Spectrum subspectrumToAddSSC2 = new Spectrum(ssc2.getSubspectrum().getNuclei());

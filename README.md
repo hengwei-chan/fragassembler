@@ -51,7 +51,7 @@ That can be done with commands like:
 
 2. Change the directory:
 
-    cd FragAssembler/FragAssembler
+    cd FragAssembler
 
 3. And build the jar file with following Maven command:
     

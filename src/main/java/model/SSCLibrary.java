@@ -109,7 +109,7 @@ public final class SSCLibrary {
                     this.HOSECodeLookupTableShifts.put(HOSECode, new ArrayList<>());
                 }
                 this.HOSECodeLookupTableSSCIndices.get(HOSECode).add(ssc.getIndex());
-                signal = ssc.getSubspectrum().getSignal(ssc.getAssignments().getSignalIndex(0, ssc.getRootAtomIndex()));
+                signal = ssc.getSubspectrum().getSignal(ssc.getAssignments().getIndex(0, ssc.getRootAtomIndex()));
                 if(signal != null){
                     this.HOSECodeLookupTableShifts.get(HOSECode).add(signal.getShift(0));
                 }                

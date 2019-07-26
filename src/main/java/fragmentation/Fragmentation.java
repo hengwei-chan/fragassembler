@@ -145,7 +145,7 @@ public class Fragmentation {
                 }
                 for (int i = 0; i < structure.getAtomCount(); i++) {
                     if((structure.getAtom(i) == atom) && (i != prevAtomIndices.get(atom))){
-                        assignment.setAssignment(0, assignment.getSignalIndex(0, prevAtomIndices.get(atom)), i);
+                        assignment.setAssignment(0, assignment.getIndex(0, prevAtomIndices.get(atom)), i);
                         break;
                     } 
                 }
@@ -193,10 +193,10 @@ public class Fragmentation {
             atomInStructure = structure.getAtom(substructureAtomIndices.get(j));
             atomInSubstructure = substructure.getAtom(j);
             if(atomInStructure.getSymbol().equals(Utils.getAtomTypeFromSpectrum(subspectrum, 0))){                
-                if((assignment.getSignalIndex(0, substructureAtomIndices.get(j)) == null) || (spectrum.getSignal(assignment.getSignalIndex(0, substructureAtomIndices.get(j))) == null)){                    
+                if((assignment.getIndex(0, substructureAtomIndices.get(j)) == null) || (spectrum.getSignal(assignment.getIndex(0, substructureAtomIndices.get(j))) == null)){
                     return null;
-                }                
-                subspectrum.addSignal(spectrum.getSignal(assignment.getSignalIndex(0, substructureAtomIndices.get(j))));
+                }
+                subspectrum.addSignal(spectrum.getSignal(assignment.getIndex(0, substructureAtomIndices.get(j))));
                 subassignment.addAssignment(new int[]{j});                
             }                        
             atomInSubstructure.setIsInRing(atomInStructure.isInRing());
