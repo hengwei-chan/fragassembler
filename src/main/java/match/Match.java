@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2019. Michael Wenk [https://github.com/michaelwenk]
+ * Copyright (c) 2019 Michael Wenk [https://github.com/michaelwenk]
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -11,6 +11,7 @@
  */
 package match;
 
+import casekit.NMR.Utils;
 import casekit.NMR.model.Signal;
 import hose.HOSECodeBuilder;
 import hose.model.ConnectionTree;
@@ -20,6 +21,7 @@ import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IBond;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 /**
@@ -169,25 +171,70 @@ public class Match {
      *
      * @param ssc1
      * @param ssc2
-     * @param rootAtomIndexSSC1
-     * @param rootAtomIndexSSC2
+     * @param atomIndexSSC1
+     * @param atomIndexSSC2
      * @return
-     * @throws org.openscience.cdk.exception.CDKException
      */
-    public static int getMaximumMatchingSphereHOSECode(final SSC ssc1, final SSC ssc2, final int rootAtomIndexSSC1, final int rootAtomIndexSSC2) throws CDKException {
+    public static int getMaximumMatchingSphereHOSECode(final SSC ssc1, final SSC ssc2, final int atomIndexSSC1, final int atomIndexSSC2, final double shiftTol) throws CDKException {
         int maxMatchingSphere = -1;
-        String HOSECodeSSC1;
-        String HOSECodeSSC2;
+
+        if(!Utils.checkIndexInAtomContainer(ssc1.getSubstructure(), atomIndexSSC1)
+                || !Utils.checkIndexInAtomContainer(ssc2.getSubstructure(), atomIndexSSC2)){
+            return maxMatchingSphere;
+        }
+
+        ConnectionTree connectionTreeSSC1, connectionTreeSSC2;
+        ConnectionTreeNode nodeInSphereSSC1, nodeInSphereSSC2;
+        ArrayList<ConnectionTreeNode> nodesInSphereSSC1, nodesInSphereSSC2;
+        Signal signalSSC1, signalSSC2;
+        String HOSECodeSSC1, HOSECodeSSC2;
+        boolean invalid;
+        // iterates over each sphere until max. matching sphere and builds new conn. trees because of comparable order of the elements
         for (int s = 0; s <= Integer.min(ssc1.getMaxSphere(), ssc2.getMaxSphere()); s++) {
-            HOSECodeSSC1 = HOSECodeBuilder.buildHOSECode(ssc1.getSubstructure(), rootAtomIndexSSC1, s, false);
-            HOSECodeSSC2 = HOSECodeBuilder.buildHOSECode(ssc2.getSubstructure(), rootAtomIndexSSC2, s, false);
-//            System.out.println(" --> in s: " + s + " -> " + HOSECodeSSC1 + " vs. " + HOSECodeSSC2);
+            connectionTreeSSC1 = HOSECodeBuilder.buildConnectionTree(ssc1.getSubstructure(), atomIndexSSC1, s);
+            connectionTreeSSC2 = HOSECodeBuilder.buildConnectionTree(ssc2.getSubstructure(), atomIndexSSC2, s);
+            HOSECodeSSC1 = HOSECodeBuilder.buildHOSECode(connectionTreeSSC1, false);
+            HOSECodeSSC2 = HOSECodeBuilder.buildHOSECode(connectionTreeSSC2, false);
             if (!HOSECodeSSC1.equals(HOSECodeSSC2)) {
                 break;
             }
+
+            // new added part:
+            // for each conn. tree node pair in conn. tree (which should be similar until max. matching sphere) compare the multiplicity information
+            // and also the shifts within a certain shift tolerance range (is that second step needed?)
+//            if(s == Integer.min(ssc1.getMaxSphere(), ssc2.getMaxSphere())){
+                nodesInSphereSSC1 = connectionTreeSSC1.getNodesInSphere(s);
+                nodesInSphereSSC2 = connectionTreeSSC2.getNodesInSphere(s);
+                invalid = false;
+                for (int i = 0; i < connectionTreeSSC1.getNodesCountInSphere(s); i++) {
+                    nodeInSphereSSC1 = nodesInSphereSSC1.get(i);
+                    nodeInSphereSSC2 = nodesInSphereSSC2.get(i);
+                    if(nodeInSphereSSC1.isRingClosureNode()){
+                        continue;
+                    }
+                    signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, nodeInSphereSSC1.getKey()));
+                    signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeInSphereSSC2.getKey()));
+                    if((signalSSC1 == null) || (signalSSC2 == null)){
+                            continue;
+                    }
+
+                    if(!signalSSC1.getMultiplicity().equals(signalSSC2.getMultiplicity()) // this is, actually, for the last matching sphere
+//                            || (Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol) // @TODO is this shift comparison needed?
+                    ){
+                        invalid = true;
+                        break;
+                    }
+
+                }
+                if(invalid){
+                    break;
+                }
+//            }
+
             maxMatchingSphere = s;
-//            System.out.println(" --> in s: " + s + " -> " + HOSECodeSSC1 + " vs. " + HOSECodeSSC2);
+//            System.out.println("   --> in s: " + s + " -> " + HOSECodeSSC1 + " vs. " + HOSECodeSSC2);
         }
+
         return maxMatchingSphere;
     }
 
