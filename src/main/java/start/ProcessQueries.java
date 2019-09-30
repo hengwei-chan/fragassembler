@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2019. Michael Wenk [https://github.com/michaelwenk]
+ * Copyright (c) 2019 Michael Wenk [https://github.com/michaelwenk]
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -29,7 +29,6 @@ import model.SSCLibrary;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.openscience.cdk.exception.CDKException;
-import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smiles.SmilesParser;
 import search.SSCRanker;
@@ -161,6 +160,36 @@ public class ProcessQueries {
 
     public void processCore(final SSCRanker sscRanker, final Spectrum querySpectrum, final long querySpectrumCounter) throws Exception {
 
+//
+//        this.sscLibrary.buildHOSELookupTables();
+//        System.out.println("\n\nranked SSC library shifts: ");
+//        ArrayList<Double> shifts;
+//        final double multiplierIQR = 1.5;
+//        boolean toShow;
+//        for (final String HOSECode : this.sscLibrary.getHOSECodeLookupTableShifts().keySet()){
+//            shifts = this.sscLibrary.getHOSECodeLookupTableShifts().get(HOSECode);
+//
+//            toShow = false;
+////            while (!Utils.getOutliers(shifts, multiplierIQR).isEmpty()){
+////                System.out.println(" -> " + HOSECode + ": " + shifts + " -> " + Utils.getOutliers(shifts, multiplierIQR));
+////                System.out.println(" ---> " + Utils.getMean(shifts) + " vs. " + Utils.getMedian(shifts) + " vs. " + Utils.getRMS(shifts));
+////                shifts = Utils.removeOutliers(shifts, multiplierIQR);
+////                toShow = true;
+////            }
+//            if (!Utils.getOutliers(shifts, multiplierIQR).isEmpty()){
+//                System.out.println(" -> " + HOSECode + ": " + shifts + " -> " + Utils.getOutliers(shifts, multiplierIQR));
+//                System.out.println(" ---> " + Utils.getMean(shifts) + " vs. " + Utils.getMedian(shifts) + " vs. " + Utils.getRMS(shifts));
+//                shifts = Utils.removeOutliers(shifts, multiplierIQR);
+//                toShow = true;
+//            }
+//
+//            if(toShow){
+//                System.out.println(" -> " + HOSECode + ": " + shifts + " -> " + Utils.getOutliers(shifts, multiplierIQR));
+//                System.out.println(" ---> " + Utils.getMean(shifts) + " vs. " + Utils.getMedian(shifts) + " vs. " + Utils.getRMS(shifts) + "\n");
+//            }
+//        }
+//        System.out.println("\n\n");
+
         sscRanker.findHits(querySpectrum, this.shiftTol);
         System.out.println("\n\nno. of matches:    " + sscRanker.getHitsCount());
         System.out.println("ranked SSC indices:    " + sscRanker.getRankedSSCIndices());
@@ -177,7 +206,7 @@ public class ProcessQueries {
         }
         System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
-        final HashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol);
+        final HashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
 
         System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + querySpectrum.getSpecDescription() + "):\t" + solutions.size());
 
@@ -202,29 +231,68 @@ public class ProcessQueries {
         final ArrayList<Double> sortedQuerySpectrumShifts = querySpectrum.getShifts(0);
         Collections.sort(sortedQuerySpectrumShifts);
 
-        final SmilesParser smilesParser = new SmilesParser(SilentChemObjectBuilder.getInstance());
         String smiles;
-        IAtomContainer solutionAtomContainer;
         ArrayList<Double> sortedSolutionSpectrumShifts;
         for (int i = 0; i < solutionsSMILESToSort.length; i++) {
             smiles = solutionsSMILESToSort[i];
-            solutionAtomContainer = smilesParser.parseSmiles(smiles);
-            sortedSolutionSpectrumShifts = solutions.get(smiles).getSubspectrum().getShifts(0);
+            sortedSolutionSpectrumShifts = new ArrayList<>(solutions.get(smiles).getSubspectrum().getShifts(0));
             Collections.sort(sortedSolutionSpectrumShifts);
-
             System.out.println("query spectrum   :\t" + sortedQuerySpectrumShifts);
             System.out.println("solution spectrum:\t" + sortedSolutionSpectrumShifts);
             System.out.println("SMILES:          :\t" + smiles);
-            System.out.println("              --> \t" + "atoms: " + solutionAtomContainer.getAtomCount() + ", bonds: " + solutionAtomContainer.getBondCount());
+            System.out.println("              --> \t" + "atoms: " + solutions.get(smiles).getSubstructure().getAtomCount() + ", bonds: " + solutions.get(smiles).getSubstructure().getBondCount());
             System.out.println("              --> \t" + "tanimoto: " + tanimotoCoefficients.get(smiles));
 
 
             bw.append(smiles + " " + i + " " + tanimotoCoefficients.get(smiles));
             bw.newLine();
             bw.flush();
+
+
+
+
+//            SSCLibrary sscLibrary = new SSCLibrary(nThreads);
+//            SSC ssc;
+//            int maxSphere = 3;
+//            for (int j = 0; j < solutions.get(smiles).getAtomCount(); j++) {
+//                ssc = Fragmentation.buildSSC(solutions.get(smiles).getSubstructure(), solutions.get(smiles).getSubspectrum(), solutions.get(smiles).getAssignments(), j, maxSphere);
+//                if(ssc != null){
+//                    ssc.setIndex(sscLibrary.getSSCCount());
+//                    sscLibrary.insert(ssc);
+//                }
+//            }
+//
+//            int rootAtomIndex = 7;
+//            System.out.println("HOSE tree: " + HOSECodeBuilder.buildConnectionTree(Fragmentation.buildSubstructure(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere), 0, maxSphere));
+//            System.out.println(" -> HOSE: " + HOSECodeBuilder.buildHOSECode(Fragmentation.buildSubstructure(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere), 0, maxSphere, false));
+//            System.out.println("HOSE tree: " + HOSECodeBuilder.buildConnectionTree(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere));
+//            System.out.println(" -> HOSE: " + HOSECodeBuilder.buildHOSECode(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere, false));
+//
+//            Utils.generatePicture(solutions.get(smiles).getSubstructure(), "out_final.png");
+//            sscLibrary.buildHOSELookupTables();
+//            Spectrum predictedSpectrum = Predict.predictSpectrum(sscLibrary.getHOSECodeLookupTableShifts(), solutions.get(smiles).getSubstructure(), maxSphere, "13C");
+//            ArrayList<Double> sortedShiftList = new ArrayList<>(predictedSpectrum.getShifts(0));
+//            Collections.sort(sortedShiftList);
+//            System.out.println("PREDICTION: " + sortedShiftList);
+
+
+
         }
 
         bw.close();
+
+
+
+//        int maxSphere = 3;
+//        int rootAtomIndex1 = 3;
+//        int rootAtomIndex2 = 0;
+//        ConnectionTree connectionTreeSSC1 = HOSECodeBuilder.buildConnectionTree(ssc1.getSubstructure(), rootAtomIndex1, maxSphere);
+//        ConnectionTree connectionTreeSSC2 = HOSECodeBuilder.buildConnectionTree(ssc2.getSubstructure(), rootAtomIndex2, maxSphere);
+//        System.out.println( "\n"+ connectionTreeSSC1 + "\n" + connectionTreeSSC2);
+//        System.out.println(HOSECodeBuilder.buildHOSECode(ssc1.getSubstructure(), rootAtomIndex1, maxSphere, false) + "\n"
+//                + HOSECodeBuilder.buildHOSECode(ssc2.getSubstructure(), rootAtomIndex2, maxSphere, false));
+
+
     }
 
     private void presearch(final Spectrum querySpectrum) throws InterruptedException, CDKException {
