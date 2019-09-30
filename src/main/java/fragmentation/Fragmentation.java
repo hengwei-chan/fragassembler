@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2019. Michael Wenk [https://github.com/michaelwenk]
+ * Copyright (c) 2019 Michael Wenk [https://github.com/michaelwenk]
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -40,17 +40,17 @@ public class Fragmentation {
      * breadth first search with spherical limit.
      *
      * @param SSCComponentsSet
-     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @param nThreads Number of threads to use for parallelization
      * @return
      * @throws java.lang.InterruptedException
      * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
+     * @throws CloneNotSupportedException
      * @see Fragmentation#buildSSCs(Object[], int, long)
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads) throws InterruptedException, CDKException, CloneNotSupportedException {                
-        return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxNoOfSpheres, nThreads, 0);
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads) throws InterruptedException, CDKException, CloneNotSupportedException {                
+        return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxSphere, nThreads, 0);
     }
     
     /**
@@ -59,17 +59,15 @@ public class Fragmentation {
      * breadth first search with spherical limit.
      *
      * @param SSCComponentsSet
-     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @param nThreads Number of threads to use for parallelization
      * @param offset offset value as starting point for indexing the SSCs
      * @return
      * @throws java.lang.InterruptedException
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
      * @see Fragmentation#buildSSCs(Object[], int, long)
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxNoOfSpheres, final int nThreads, final long offset) throws InterruptedException, CDKException, CloneNotSupportedException {
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final long offset) throws InterruptedException {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final SSCLibrary sscLibrary = new SSCLibrary();
@@ -78,7 +76,7 @@ public class Fragmentation {
         long offsetSSCIndex = offset;
         for (final int index: SSCComponentsSet.keySet()) {
             final long offsetSSCIndexFinalCopy = offsetSSCIndex;           
-            callables.add((Callable<SSCLibrary>) () -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxNoOfSpheres, offsetSSCIndexFinalCopy));
+            callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere, offsetSSCIndexFinalCopy));
             offsetSSCIndex += ((IAtomContainer) SSCComponentsSet.get(index)[0]).getAtomCount();
         }
         // execute all task in parallel
@@ -99,8 +97,8 @@ public class Fragmentation {
             }
                 });
         // shut down the executor service
-        Utils.stopExecuter(executor, 5);                        
-                
+        Utils.stopExecuter(executor, 5);
+
 
         return sscLibrary;
     }
@@ -111,16 +109,15 @@ public class Fragmentation {
      * with spherical limit. 
      *
      * @param SSCComponentsSet
-     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * to be the same type as in used spectrum property.
      * @param offsetSSCIndex  offset value for indexing each new built SSC
      * @return
-     * @throws java.lang.CloneNotSupportedException
      * @see Fragmentation#buildSSC(IAtomContainer, Spectrum, Assignment, int, int)
      */
-    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxNoOfSpheres, final long offsetSSCIndex) throws CloneNotSupportedException, CDKException {
-        final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];        
+    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxSphere, final long offsetSSCIndex) throws CDKException {
+        final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];
         final Spectrum spectrum = (Spectrum) SSCComponentsSet[1];
         final Assignment assignment = (Assignment) SSCComponentsSet[2];
         // if the structure contains explicit hydrogens atoms then, after 
@@ -143,7 +140,7 @@ public class Fragmentation {
         final SSCLibrary sscLibrary = new SSCLibrary();        
         SSC ssc;
         for (int i = 0; i < structure.getAtomCount(); i++) {      
-            ssc = Fragmentation.buildSSC(structure, spectrum, assignment, i, maxNoOfSpheres);
+            ssc = Fragmentation.buildSSC(structure, spectrum, assignment, i, maxSphere);
             if (ssc == null) {
                 return new SSCLibrary();                
             }
@@ -164,17 +161,17 @@ public class Fragmentation {
      * @param spectrum spectrum to split into subspectra
      * @param assignment signal to atom assignments
      * @param rootAtomIndex Index of start atom
-     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * 
      * @return
      * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
-     * @see Fragmentation#buildSubstructure(org.openscience.cdk.interfaces.IAtomContainer, int, int) 
+     * @see Fragmentation#buildSubstructure(org.openscience.cdk.interfaces.IAtomContainer, int, int)
      */
-    public static SSC buildSSC(final IAtomContainer structure, final Spectrum spectrum, final Assignment assignment, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException, CloneNotSupportedException{
-        final ArrayList<Integer> substructureAtomIndices = new ArrayList<>(Fragmentation.buildSubstructureAtomIndicesSet(structure, rootAtomIndex, maxNoOfSpheres));        
-        final IAtomContainer substructure = Fragmentation.buildSubstructure(structure, rootAtomIndex, maxNoOfSpheres);
+    public static SSC buildSSC(final IAtomContainer structure, final Spectrum spectrum, final Assignment assignment, final int rootAtomIndex, final int maxSphere) throws CDKException {
+        Utils.setAromaticityAndKekulize(structure);
+        final ArrayList<Integer> substructureAtomIndices = new ArrayList<>(Fragmentation.buildSubstructureAtomIndicesSet(structure, rootAtomIndex, maxSphere));
+        final IAtomContainer substructure = Fragmentation.buildSubstructure(structure, rootAtomIndex, maxSphere);
         final Spectrum subspectrum = new Spectrum(spectrum.getNuclei());
         final Assignment subassignment = new Assignment(subspectrum);
         IAtom atomInStructure, atomInSubstructure;
@@ -192,7 +189,6 @@ public class Fragmentation {
             atomInSubstructure.setIsAromatic(atomInStructure.isAromatic());
             atomInSubstructure.setCharge(atomInStructure.getCharge());
             atomInSubstructure.setValency(atomInStructure.getValency());
-            
             for (final IAtom connectedAtomInSubstructure : substructure.getConnectedAtomsList(atomInSubstructure)) {
                 substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsInRing(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isInRing());
                 substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsAromatic(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isAromatic());
@@ -205,7 +201,7 @@ public class Fragmentation {
         // tries to return a valid SSC with all complete information
         // if something is missing/incomplete then null will be returned 
         try {
-            return new SSC(subspectrum, subassignment, substructure, 0, maxNoOfSpheres);
+            return new SSC(subspectrum, subassignment, substructure, 0, maxSphere);
         } catch (Exception e) {
             return null;
         }         
@@ -218,15 +214,15 @@ public class Fragmentation {
      *
      * @param structure IAtomContainer as structure
      * @param rootAtomIndex Index of start atom
-     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see HOSECodeBuilder#buildConnectionTree(IAtomContainer, int, Integer)
      * @see HOSECodeBuilder#buildAtomContainer(ConnectionTree)
      */
-    public static IAtomContainer buildSubstructure(final IAtomContainer structure, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException {
-        return HOSECodeBuilder.buildAtomContainer(HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxNoOfSpheres));
+    public static IAtomContainer buildSubstructure(final IAtomContainer structure, final int rootAtomIndex, final int maxSphere) throws CDKException {
+        return HOSECodeBuilder.buildAtomContainer(HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxSphere));
     }
     
     /**
@@ -236,14 +232,13 @@ public class Fragmentation {
      *
      * @param structure IAtomContainer as structure
      * @param rootAtomIndex Index of start atom
-     * @param maxNoOfSpheres Spherical limit for building a substructure into 
+     * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @return
      * @throws org.openscience.cdk.exception.CDKException
      * @see HOSECodeBuilder#buildConnectionTree(IAtomContainer, int, Integer)
      */
-    public static LinkedHashSet<Integer> buildSubstructureAtomIndicesSet(final IAtomContainer structure, final int rootAtomIndex, final int maxNoOfSpheres) throws CDKException {
-        return HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxNoOfSpheres).getKeys(true);
+    public static LinkedHashSet<Integer> buildSubstructureAtomIndicesSet(final IAtomContainer structure, final int rootAtomIndex, final int maxSphere) throws CDKException {
+        return HOSECodeBuilder.buildConnectionTree(structure, rootAtomIndex, maxSphere).getKeys(true);
     }
-    
 }
