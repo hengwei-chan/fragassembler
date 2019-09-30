@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2019. Michael Wenk [https://github.com/michaelwenk]
+ * Copyright (c) 2019 Michael Wenk [https://github.com/michaelwenk]
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -14,7 +14,9 @@ package model;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.bson.Document;
 
 /**
@@ -23,20 +25,7 @@ import org.bson.Document;
  */
 public class SSCConverter {
 
-    private final static Gson GSON = new Gson();
-
-    public static SSC JsonObjectToSSC(final JsonObject sscJsonObject) throws Exception {
-        final SSC ssc = new SSC(
-                GSON.fromJson(sscJsonObject.get("subspectrum"), Spectrum.class),
-                GSON.fromJson(sscJsonObject.get("assignment"), Assignment.class),
-                GSON.fromJson(sscJsonObject.get("substructure"), ExtendedConnectionMatrix.class).toAtomContainer(),
-                sscJsonObject.get("rootAtomIndex").getAsInt(),
-                sscJsonObject.get("maxSphere").getAsInt()
-        );
-        ssc.setIndex(sscJsonObject.get("index").getAsLong());
-
-        return ssc;
-    }
+    private final static Gson GSON = new GsonBuilder().setLenient().create();
     
     public static SSC DocumentToSSC(final Document sscDocument) throws Exception {
         final SSC ssc = new SSC(
@@ -62,5 +51,23 @@ public class SSCConverter {
         document.append("multSections", ssc.getMultiplicitySections());
         
         return document;
+    }
+
+    public static SSC JSONToSSC(final String json) throws Exception {
+        final JsonObject jsonObject = new JsonParser().parse(json).getAsJsonObject();
+        final SSC ssc = new SSC(
+                GSON.fromJson(jsonObject.get("subspectrum"), Spectrum.class),
+                GSON.fromJson(jsonObject.get("assignment"), Assignment.class),
+                GSON.fromJson(jsonObject.get("substructure"), ExtendedConnectionMatrix.class).toAtomContainer(),
+                jsonObject.get("rootAtomIndex").getAsInt(),
+                jsonObject.get("maxSphere").getAsInt()
+        );
+        ssc.setIndex(jsonObject.get("index").getAsJsonObject().get("$numberLong").getAsLong());
+
+        return ssc;
+    }
+
+    public static String SSCToJSON(final SSC ssc, final Long sscIndex){
+        return new Document().append(String.valueOf(sscIndex), SSCConverter.SSCToDocument(ssc, sscIndex)).toJson();
     }
 }
