@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2019. Michael Wenk [https://github.com/michaelwenk]
+ * Copyright (c) 2019 Michael Wenk [https://github.com/michaelwenk]
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
  *
@@ -14,7 +14,6 @@ package model;
 import casekit.NMR.Utils;
 import casekit.NMR.dbservice.NMRShiftDB;
 import casekit.NMR.model.Signal;
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mongodb.client.FindIterable;
@@ -67,13 +66,11 @@ public final class SSCLibrary {
     /**
      * Creates/Updates lookup tables for generated HOSE codes regarding the 
      * given SSC library. 
-     *
-     * @throws java.lang.InterruptedException
-     * 
+     **
      * @see #getHOSECodeLookupTableSSCIndices()
      * @see #getHOSECodeLookupTableShifts() 
      */
-    public void buildHOSELookupTables() throws InterruptedException {  
+    public void buildHOSELookupTables() {
         this.HOSECodeLookupTableShifts.clear();
         this.HOSECodeLookupTableSSCIndices.clear();
         String HOSECode;
@@ -89,7 +86,7 @@ public final class SSCLibrary {
                 signal = ssc.getSubspectrum().getSignal(ssc.getAssignments().getIndex(0, ssc.getRootAtomIndex()));
                 if(signal != null){
                     this.HOSECodeLookupTableShifts.get(HOSECode).add(signal.getShift(0));
-                }                
+                }
             }            
         }
     }
@@ -252,40 +249,23 @@ public final class SSCLibrary {
     
     public void exportToJSONFile(final String pathToJSON) throws IOException, InterruptedException {                        
         final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToJSON));
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<Document>> callables = new ArrayList<>();
-        // add all task to do
         long sscCounter = 0;
+        String json;
+        bw.write("{");
+        bw.newLine();
         for (final SSC ssc : this.getSSCs()) {
-            final long sscCounterCopy = sscCounter;
-            callables.add((Callable<Document>) () -> {                        
-                return SSCConverter.SSCToDocument(ssc, sscCounterCopy);
-            });
+            json = SSCConverter.SSCToJSON(ssc, sscCounter);
+            bw.write(json.substring(1, json.length() - 1));
+            if(sscCounter < this.getSSCCount() - 1){
+                bw.write(",");
+            }
+            bw.newLine();
+            bw.flush();
+
             sscCounter++;
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((document) -> {                  
-                    try {
-                        bw.write(document.toJson());
-                        bw.newLine();
-                        bw.flush();
-                    } catch (IOException ex) {
-                        Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
-        
+
+        bw.write("}");
         bw.close();
     }
     
@@ -606,7 +586,6 @@ public final class SSCLibrary {
      * @see #containsSSC(long)
      */
     public void extend(final String pathToJSON, final long offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException{
-        final Gson gson = new Gson();
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
         final JsonObject jsonObject = new JsonParser().parse(br).getAsJsonObject();
         // initialize an executor for parallelization
@@ -614,9 +593,7 @@ public final class SSCLibrary {
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
         for (final String sscIndex: jsonObject.keySet()) {
-            callables.add((Callable<SSC>) () -> {
-                return SSCConverter.JsonObjectToSSC(jsonObject.getAsJsonObject(sscIndex));
-            });
+            callables.add(() -> SSCConverter.JSONToSSC(jsonObject.getAsJsonObject(sscIndex).toString()));//SSCConverter.JSONToSSC(jsonObject.getAsJsonObject(sscIndex)));
         }
         // execute all task in parallel
         executor.invokeAll(callables)
@@ -652,9 +629,8 @@ public final class SSCLibrary {
      *
      * @param shiftTol shift tolerance value [ppm] in which chemical shifts are considered as the same
      *
-     * @throws InterruptedException
      */
-    public void removeDuplicates(final double shiftTol) throws InterruptedException {
+    public void removeDuplicates(final double shiftTol) {
         // build/update HOSE code lookup tables, i.e. the one with SSC indices
         this.buildHOSELookupTables();
         
