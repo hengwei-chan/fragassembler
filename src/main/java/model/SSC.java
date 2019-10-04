@@ -18,8 +18,11 @@ import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import hose.HOSECodeBuilder;
 import hose.model.ConnectionTree;
+import org.openscience.cdk.Bond;
 import org.openscience.cdk.exception.CDKException;
+import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 import java.util.ArrayList;
@@ -37,14 +40,17 @@ public final class SSC {
     private final IAtomContainer substructure;
     // spherical search limit
     private final int rootAtomIndex;
-    private final int maxSphere;
-    // stores all shifts for each single HOSE code
-    private final HashMap<String, ArrayList<Double>> HOSECodeLookupShifts;
-    // stores all atom indices for each single HOSE code
-    private final HashMap<String, ArrayList<Integer>> HOSECodeLookupIndices;
+    private int maxSphere;
+    // stores all shifts for each single atom in SSC and its HOSE code
+    private final HashMap<Integer, String> HOSECodes;
+    private final HashMap<Integer, ArrayList<Double>> shifts;
     // connection tree holding the spherical information about the substructure
     private final HashMap<Integer, ConnectionTree> connectionTrees;
-    // stores all atom indices for each occurring atom type in substructure    
+    /**
+     * stores all atom indices for each occurring atom type in substructure
+     *
+     * @deprecated
+     */
     private HashMap<String, ArrayList<Integer>> atomTypeIndices;
     // for pre-search: map of multiplicities as keys consisting 
     // of section indices with occurrency in this SSC
@@ -72,16 +78,55 @@ public final class SSC {
         this.substructure = substructure.clone();     
         this.rootAtomIndex = rootAtomIndex;
         this.maxSphere = maxSphere;
-        this.HOSECodeLookupShifts = new HashMap<>();
-        this.HOSECodeLookupIndices = new HashMap<>();
+        this.HOSECodes = new HashMap<>();
+        this.shifts = new HashMap<>();
+
+        this.initSignalShifts();
+
         this.connectionTrees = new HashMap<>();
         this.index = -1;
         this.unsaturatedAtomIndices = new ArrayList<>();
         this.multiplicitySections = new HashMap<>();      
         this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
         this.update();
-    }   
-    
+    }
+
+    /**
+     * Constructor to "restore" a SSC object from given inputs without recreating/calculating every class members.
+     *
+     * @param subspectrum
+     * @param assignment
+     * @param substructure
+     * @param rootAtomIndex
+     * @param maxSphere
+     * @param multiplicitySections
+     * @param HOSECodes
+     * @param shifts
+     * @param connectionTrees
+     * @param unsaturatedAtomIndices
+     * @throws Exception
+     */
+//    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, String> HOSECodes, final HashMap<Integer, ConnectionTree> connectionTrees, final HashMap<Integer, ArrayList<Double>> shifts, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
+    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, ArrayList<Double>> shifts, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
+        this.subspectrum = subspectrum;
+        this.assignment = assignment;
+        this.substructure = substructure;
+        this.rootAtomIndex = rootAtomIndex;
+        this.maxSphere = maxSphere;
+//        this.HOSECodes = HOSECodes;
+//        this.connectionTrees = connectionTrees;
+        this.HOSECodes = new HashMap<>();
+        this.connectionTrees = new HashMap<>();
+        this.updateHOSECodes();
+
+        this.shifts = shifts;
+        this.unsaturatedAtomIndices = unsaturatedAtomIndices;
+        this.multiplicitySections = multiplicitySections;
+
+        this.index = -1;
+        this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
+    }
+
     /**
      * Returns a full clone of that SSC, with one exception: The index of the 
      * SSC clone is set to default value (-1).
@@ -92,6 +137,21 @@ public final class SSC {
      */
     public SSC getClone() throws Exception {
       return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere);
+    }
+
+    /**
+     * Returns the SSC substructure as HOSE code with the beginning at the SSC's root atom. <br>
+     * All HOSE code are updated beforehand.
+     *
+     * @return
+     * @throws CDKException
+     *
+     * @see #updateHOSECodes()
+     */
+    public String getAsHOSECode() throws CDKException {
+        this.updateHOSECodes();
+
+        return this.getHOSECode(this.getRootAtomIndex());
     }
     
     /**
@@ -105,10 +165,10 @@ public final class SSC {
      */
     public void update() throws CDKException {
         AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(this.substructure);
-        this.updateAtomTypeIndices();
+//        this.updateAtomTypeIndices();
         this.updateUnsaturatedAtomIndices();
         this.updateHOSECodes();
-        this.updateMultiplicitySections(); 
+        this.updateMultiplicitySections();
     }
     
     @Override
@@ -131,31 +191,107 @@ public final class SSC {
         
         return output;
     }
-    
-    /**
-     * Updates all connection trees in this SSC. 
-     *
-     * @return 
-     * 
-     * @throws CDKException
-     *
-     * @deprecated
-     */
-    private boolean updateConnectionTrees() throws CDKException {
-        for (int i = 0; i < this.getAtomCount(); i++) {
-            if(!this.updateConnectionTree(i)){
-                return false;
-            }            
+
+    private void initSignalShifts(){
+        for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
+            this.shifts.put(this.assignment.getAssignment(0, i), new ArrayList<>());
+            this.shifts.get(this.assignment.getAssignment(0, i)).add(this.subspectrum.getSignal(i).getShift(0));
         }
-        
+    }
+
+    public boolean addAtom(final IAtom atom, final IBond bond, final int parentAtomIndexinSubstructure){
+        if (!Utils.checkIndexInAtomContainer(this.substructure, parentAtomIndexinSubstructure)) {
+            return false;
+        }
+        this.substructure.addAtom(atom);
+
+        if(!this.addBond(bond, parentAtomIndexinSubstructure, this.substructure.indexOf(atom))){
+            this.substructure.removeAtom(atom);
+
+            return false;
+        }
+
         return true;
     }
-    
+
+    public boolean addBond(final IBond bond, final int parentAtomIndexInSubstructure1, final int parentAtomIndexInSubstructure2){
+        if (!Utils.checkIndexInAtomContainer(this.substructure, parentAtomIndexInSubstructure1)
+                || !Utils.checkIndexInAtomContainer(this.substructure, parentAtomIndexInSubstructure2)) {
+            return false;
+        }
+        final IBond bondToAdd = new Bond(this.substructure.getAtom(parentAtomIndexInSubstructure1), this.substructure.getAtom(parentAtomIndexInSubstructure2), bond.getOrder());
+        bondToAdd.setIsInRing(bond.isInRing());
+        bondToAdd.setIsAromatic(bond.isAromatic());
+
+        if(!Utils.isValidBondAddition(this.substructure, parentAtomIndexInSubstructure1, bondToAdd)
+                || !Utils.isValidBondAddition(this.substructure, parentAtomIndexInSubstructure2, bondToAdd)){
+            return false;
+        }
+        this.substructure.addBond(bondToAdd);
+
+        return true;
+    }
+
+    public boolean addSignal(final Signal newSignal, final int atomIndexInSubstructure){
+        if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
+            return false;
+        }
+        if(newSignal == null){
+            return false;
+        }
+        this.subspectrum.addSignal(newSignal);
+        this.assignment.addAssignment(new int[]{atomIndexInSubstructure});
+
+        return true;
+    }
+
+    public boolean addShiftsFromSubspectrum(final Spectrum subspectrum){
+        if((subspectrum.getNDim() != this.subspectrum.getNDim())
+                || (!subspectrum.getNuclei()[0].equals(this.subspectrum.getNuclei()[0]))
+                || (subspectrum.getSignalCount() != this.subspectrum.getSignalCount())){
+            return false;
+        }
+        Signal signal, newSignal;
+        for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
+            signal = this.subspectrum.getSignal(i);
+            newSignal = subspectrum.getSignal(i);
+            if(!signal.getMultiplicity().equals(newSignal.getMultiplicity())){
+                return false;
+            }
+        }
+        for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
+            this.shifts.get(this.assignment.getAssignment(0, i)).add(subspectrum.getSignal(i).getShift(0));
+        }
+
+        this.calculateSignalShifts();
+
+        return true;
+    }
+
+    private void calculateSignalShifts() {
+        for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
+            this.subspectrum.setShift(Utils.getMedian(this.shifts.get(this.getAssignments().getAssignment(0, i))), 0, i);
+        }
+    }
+
+    public void removeSignalShiftsOutlier(){
+        for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
+            this.removeSignalShiftsOutlier(i);
+        }
+    }
+
+    private void removeSignalShiftsOutlier(final int atomIndexInSubstructure){
+        this.subspectrum.setShift(Utils.getMedian(Utils.removeOutliers(this.shifts.get(this.getAssignments().getAssignment(0, atomIndexInSubstructure)), 1.5)), 0, atomIndexInSubstructure);
+    }
+
     private boolean updateConnectionTree(final int atomIndexInSubstructure) throws CDKException {
         if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
             return false;
         }
-        this.connectionTrees.put(atomIndexInSubstructure, HOSECodeBuilder.buildConnectionTree(this.substructure, atomIndexInSubstructure, this.maxSphere));     
+        this.connectionTrees.put(atomIndexInSubstructure, HOSECodeBuilder.buildConnectionTree(this.substructure, atomIndexInSubstructure, null));//this.maxSphere));
+        if(atomIndexInSubstructure == this.getRootAtomIndex()){
+            this.maxSphere = this.getConnectionTree(atomIndexInSubstructure).getMaxSphere();
+        }
         
         return true;
     }    
@@ -178,7 +314,11 @@ public final class SSC {
     public ArrayList<Integer> getUnsaturatedAtomIndices(){
         return this.unsaturatedAtomIndices;
     }
-    
+
+    /**
+     *
+     * @deprecated
+     */
     public void updateAtomTypeIndices(){
         this.atomTypeIndices = Utils.getAtomTypeIndices(this.substructure);
     } 
@@ -194,7 +334,7 @@ public final class SSC {
 
     public boolean updateHOSECodes() throws CDKException {
         for (int i = 0; i < this.getAtomCount(); i++) {
-            if(!updateHOSECode(i)){
+            if(!this.updateHOSECode(i)){
                 return false;
             }
         }
@@ -208,33 +348,9 @@ public final class SSC {
         }
         if(!this.updateConnectionTree(atomIndexInSubstructure)){
             return false;
-        }        
-        final String HOSECodePrev = this.getHOSECode(atomIndexInSubstructure);
-        final String HOSECode = HOSECodeBuilder.buildHOSECode(this.connectionTrees.get(atomIndexInSubstructure), false);
-        if((HOSECodePrev != null) && !HOSECode.equals(HOSECodePrev)){
-            // remove old HOSE code entries of that atom
-            final int positionInLookupLists = this.HOSECodeLookupIndices.get(HOSECodePrev).indexOf(atomIndexInSubstructure);
-            this.HOSECodeLookupIndices.get(HOSECodePrev).remove(positionInLookupLists);
-            if(this.HOSECodeLookupIndices.get(HOSECodePrev).isEmpty()){
-                this.HOSECodeLookupIndices.remove(HOSECodePrev);
-                this.HOSECodeLookupShifts.remove(HOSECodePrev);
-            }            
         }
-        if (!this.HOSECodeLookupShifts.containsKey(HOSECode)) {
-            this.HOSECodeLookupShifts.put(HOSECode, new ArrayList<>());
-            this.HOSECodeLookupIndices.put(HOSECode, new ArrayList<>());
-        }
-        if(!this.HOSECodeLookupIndices.get(HOSECode).contains(atomIndexInSubstructure)){
-            this.HOSECodeLookupIndices.get(HOSECode).add(atomIndexInSubstructure);
-            final Integer signalIndex = this.assignment.getIndex(0, atomIndexInSubstructure);
-            if (signalIndex != null) {
-                final Signal signal = this.subspectrum.getSignal(signalIndex);
-                if ((signal != null) && (signal.getShift(0) != null)) {
-                    this.HOSECodeLookupShifts.get(HOSECode).add(signal.getShift(0));
-                }
-            }
-        }                
-                
+        this.HOSECodes.put(atomIndexInSubstructure, HOSECodeBuilder.buildHOSECode(this.connectionTrees.get(atomIndexInSubstructure), false));
+
         return true;
     }
     
@@ -242,13 +358,8 @@ public final class SSC {
         if(!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)){
             return null;
         }
-        for (final String HOSECode : this.getHOSECodeLookupIndices().keySet()) {
-            if (this.getHOSECodeLookupIndices().get(HOSECode).contains(atomIndexInSubstructure)) {
-                return HOSECode;
-            }
-        }        
         
-        return null;
+        return this.HOSECodes.get(atomIndexInSubstructure);
     }
 
     /**
@@ -272,6 +383,10 @@ public final class SSC {
         }
         
         return this.connectionTrees.get(atomIndexInSubstructure);
+    }
+
+    public HashMap<Integer, ConnectionTree> getConnectionTrees(){
+        return this.connectionTrees;
     }
     
     /**
@@ -343,15 +458,19 @@ public final class SSC {
     public int getBondCount(){
         return this.getSubstructure().getBondCount();
     }
-    
-    public HashMap<String, ArrayList<Double>> getHOSECodeLookupShifts(){
-        return this.HOSECodeLookupShifts;
+
+    public HashMap<Integer, String> getHOSECodes(){
+        return this.HOSECodes;
     }
-    
-    public HashMap<String, ArrayList<Integer>> getHOSECodeLookupIndices(){
-        return this.HOSECodeLookupIndices;
-    }        
-    
+    public HashMap<Integer, ArrayList<Double>> getShifts(){
+        return this.shifts;
+    }
+
+    /**
+     * @return
+     *
+     * @deprecated
+     */
     public HashMap<String, ArrayList<Integer>> getAtomTypeIndices(){
         return this.atomTypeIndices;
     }

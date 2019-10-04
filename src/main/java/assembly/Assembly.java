@@ -55,6 +55,10 @@ public class Assembly {
             for (int j = 0; j < ssc2.getAtomCount(); j++) {
                 try {
                     maxMatchingSphere = Match.getMaximumMatchingSphereHOSECode(ssc1, ssc2, i, j, shiftTol);
+//                    if(i == 19 && j == 2){
+//                        System.out.println("i == 19 && j == 2 -> " + maxMatchingSphere + " -> "
+//                                + HOSECodeBuilder.buildHOSECode(ssc1.getSubstructure(), i, 1, false) + " vs. " + HOSECodeBuilder.buildHOSECode(ssc2.getSubstructure(), j, 1, false));
+//                    }
                 } catch (CDKException e) {
                    maxMatchingSphere = -1;
                 }
@@ -402,13 +406,6 @@ public class Assembly {
         return mappedAtomIndices;
     }
     
-    public static boolean isValidBondAddition(final IAtomContainer ac, final int atomIndex, final IBond bondToAdd){        
-
-        System.out.println(atomIndex + " --> " + Utils.getBondOrderSum(ac, atomIndex, true) + " + " + Utils.getBondOrderAsNumeric(bondToAdd) + " = " + (Utils.getBondOrderSum(ac, atomIndex, true) + Utils.getBondOrderAsNumeric(bondToAdd)) + " <= " + ac.getAtom(atomIndex).getValency() + " ? -> " + ((Utils.getBondOrderSum(ac, atomIndex, true) + Utils.getBondOrderAsNumeric(bondToAdd)) <= ac.getAtom(atomIndex).getValency()));
-        
-        return (Utils.getBondOrderSum(ac, atomIndex, true) + Utils.getBondOrderAsNumeric(bondToAdd)) <= ac.getAtom(atomIndex).getValency();
-    }
-    
     public static boolean isValidSubspectrum(final Spectrum subspectrum, final Spectrum querySpectrum, final double shiftTol, final double thrsMatchFactor){
         if((subspectrum == null) || (subspectrum.getSignalCount() > querySpectrum.getSignalCount())){
             return false;
@@ -568,8 +565,8 @@ public class Assembly {
                     bondToAdd = ssc2.getSubstructure().getBond(mappedAtomSSC2, connectedAtomSSC2).clone();
                     bondToAdd.setAtom(mappedAtomSSC1, 0);
                     bondToAdd.setAtom(connectedAtomSSC1, 1);
-                    if(Assembly.isValidBondAddition(ssc1.getSubstructure(), mappedAtomIndexSSC1, bondToAdd)
-                            && Assembly.isValidBondAddition(ssc1.getSubstructure(), connectedAtomSSC1.getIndex(), bondToAdd)){
+                    if(Utils.isValidBondAddition(ssc1.getSubstructure(), mappedAtomIndexSSC1, bondToAdd)
+                            && Utils.isValidBondAddition(ssc1.getSubstructure(), connectedAtomSSC1.getIndex(), bondToAdd)){
 //                        if(bondToAdd.isAromatic()){
 //                            bondToAdd.setOrder(IBond.Order.SINGLE);
 //                        }
@@ -703,12 +700,9 @@ public class Assembly {
                 ssc2 = rankedSSCLibrary.getSSC(i);
 
                 System.out.println("\n\n-------------------------------- " + path + ", " + i + " --------------------------------");                                
-                
-//            backupSSC = intermediate.getClone();
 
                 newIntermediate = Assembly.assemblyCore(intermediate.getClone(), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
                 if (newIntermediate == null) {
-//                intermediate = backupSSC.getClone();
                     continue;
                 }
 
@@ -730,8 +724,9 @@ public class Assembly {
                         System.out.println("-> equivalences:\t" + newIntermediate.getSubspectrum().getEquivalences());
                     }
 
-//                intermediate = startSSC.getClone();//backupSSC1.getClone();
                     continue;
+
+//                    return solutions;
                 }
                 
                 newPath = new LinkedHashSet<>(path);
@@ -801,15 +796,15 @@ public class Assembly {
                     System.out.println("\n\n-------------------------------- " + path + ", " + i + " --------------------------------");
 
                     newIntermediate = Assembly.assemblyCore(intermediate.getClone(), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
-                    if (newIntermediate == null) {
+                    if ((newIntermediate == null)){
                         continue;
                     }
 
-                try {
-                    Utils.generatePicture(newIntermediate.getSubstructure(), "results/temp_" + path + "_" + i + ".png");
-                } catch (Exception e) {
-
-                }
+//                try {
+//                    Utils.generatePicture(newIntermediate.getSubstructure(), "results/temp_" + path + "_" + i + ".png");
+//                } catch (Exception e) {
+//
+//                }
 
                     if (Assembly.isFinalSSC(newIntermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
                         structureAsSMILES = smilesGenerator.create(newIntermediate.getSubstructure());
@@ -1065,7 +1060,7 @@ public class Assembly {
                     parentAtomSSC1 = ssc1.getSubstructure().getAtom(reversedAtomMappings.get(connectedNodeInSphereToAddSSC2.getParentNodes().get(0).getKey()));
                     System.out.println("in s: " + s + " -> bond: (" + connectedNodeInSphereToAddSSC2.getKey() + ") to " + reversedAtomMappings.get(connectedNodeInSphereToAddSSC2.getParentNodes().get(0).getKey()));
 
-                    if (Assembly.isValidBondAddition(ssc1.getSubstructure(), parentAtomSSC1.getIndex(), bondToAdd)) {
+                    if (Utils.isValidBondAddition(ssc1.getSubstructure(), parentAtomSSC1.getIndex(), bondToAdd)) {
 
                         atomToAdd = connectedNodeInSphereToAddSSC2.getAtom().clone();
                         ssc1.getSubstructure().addAtom(atomToAdd);
@@ -1178,7 +1173,7 @@ public class Assembly {
 
         HashMap<Integer, ArrayList<Integer[]>> overlapsHOSECodeNew = Assembly.getOverlapsHOSECodeNew(ssc1, ssc2, minMatchingSphereCount, shiftTol);
         if(overlapsHOSECodeNew.isEmpty()){
-            return ssc1;
+            return null;
         }
 
         final ArrayList<SSC> validSSCExtensions = new ArrayList<>();
@@ -1206,7 +1201,7 @@ public class Assembly {
                 int i = overlapsHOSECodeInSphere.get(k)[0];
                 int j = overlapsHOSECodeInSphere.get(k)[1];
 
-                // @TODO check this constraint again
+                // @TODO check this constraint again but should make sense
                 if(ssc1Extended.isUnsaturated(i) || ssc2.isUnsaturated(j)){
                     System.out.println(" atom " + i + " in SSC1 or atom " + j + " in SSC2 is unsaturated and not allowed as overlap root");
                     continue;
@@ -1216,6 +1211,11 @@ public class Assembly {
                 ConnectionTree maxSphereConnectionTreeSSC2 = HOSECodeBuilder.buildConnectionTree(ssc2.getSubstructure(), j, ssc2.getMaxSphere());
                 ConnectionTree matchingConnectionTreeSSC1 = HOSECodeBuilder.buildConnectionTree(ssc1Extended.getSubstructure(), i, s);
                 ConnectionTree matchingConnectionTreeSSC2 = HOSECodeBuilder.buildConnectionTree(ssc2.getSubstructure(), j, s);
+
+                if(!Match.rearrangeInvalidNodePairsInSphere(ssc1Extended, ssc2, matchingConnectionTreeSSC1, matchingConnectionTreeSSC2, s, shiftTol)){
+                    continue;
+                }
+
                 System.out.println(" --> atoms in SSC1: " + matchingConnectionTreeSSC1.getKeys(true));
                 System.out.println(" --> atoms in SSC2: " + matchingConnectionTreeSSC2.getKeys(true));
                 System.out.println(ssc1Extended.getHOSECode(i) + "\n" + ssc2.getHOSECode(j));
@@ -1241,7 +1241,6 @@ public class Assembly {
                 if(unsaturatedAtomsSSC1.isEmpty()){
                     continue;
                 }
-                Signal signalToAdd;
                 System.out.println("predicted spectrum orig.: " + ssc1Extended.getSubspectrum().getShifts(0));
                 System.out.println(" -----> unsaturated atoms SSC1:" + unsaturatedAtomsSSC1);
 
@@ -1258,156 +1257,73 @@ public class Assembly {
 
                         // if ring closure node
                         if(childNodeToAppend.isRingClosureNode()){
+                            continue;
+                        }
+                        // 1. add signal from SSC2 to SSC1 and check for predicted (sub)spectrum validation
+                        // 2. check valid bond addition; add atom and bond to parent
+                        // 3. take connection tree of nodeKeyInCompleteConnectionTreeSSC2 as root and add all non-visited child nodes
+                        //  -> add atom and bond of child nodes as well as ring closures
 
-//                            int index = connectionTreeKeysSSC2.indexOf(childNodeToAppend.getParentNodes().get(0).getKey());
-//                            int parentKeyInSSC1 = connectionTreeKeysSSC1.get(index);
-//                            int parentKeyInSSC2 = connectionTreeKeysSSC2.get(index);
-//
-//                            IBond bondToAdd = completeConnectionTreeSSC2.getBond(parentKeyInSSC2, childNodeToAppend.getKey()).clone();
-//
-//                            if(Assembly.isValidBondAddition(ssc1Extended.getSubstructure(), parentKeyInSSC1, bondToAdd)){
-//
-////                                System.out.println(" ->  bond addition for ring closure " + parentKeyInSSC1
-////                                        + " (" + parentKeyInSSC2 + " - " + childNodeToAppend.getKey() + ") : " + " valid!!!");
-//                                // parent node of child node shouldn have more than one parent node;
-//                                // we now search for them in complete conn. tree of SSC2 and check the connection
-//                                // between the grand parent and parent to complete the ring closure by adding the bond
-//
-////                                for (final ConnectionTreeNode grandParentNodeSSC2 : completeConnectionTreeSSC2.getNode(parentKeyInSSC2).getParentNodes()){
-////                                    if(atomMappingsTemp.containsValue(parentKeyInSSC2)
-////                                            && atomMappingsTemp.containsValue(grandParentNodeSSC2.getKey())){
-////                                        int parentAtomIndexSSC1 = -1, grandParentAtomIndexSSC1 = -1;
-////                                        for (final Entry<Integer, Integer> entry : atomMappingsTemp.entrySet()){
-////                                            if(entry.getValue() == parentKeyInSSC2){
-////                                                parentAtomIndexSSC1 = entry.getKey();
-////                                            } else if(entry.getValue() == grandParentNodeSSC2.getKey()) {
-////                                                grandParentAtomIndexSSC1 = entry.getKey();
-////                                            }
-////                                            if((parentAtomIndexSSC1 != -1)
-////                                                    && (grandParentAtomIndexSSC1 != -1)){
-////                                                break;
-////                                            }
-////                                        }
-////                                        if(((parentAtomIndexSSC1 != -1)
-////                                                && (grandParentAtomIndexSSC1 != -1)
-////                                                && sscToExtend.getSubstructure().getBond(sscToExtend.getSubstructure().getAtom(parentAtomIndexSSC1), sscToExtend.getSubstructure().getAtom(grandParentAtomIndexSSC1)) == null)){
-////
-////                                            if(Assembly.isValidBondAddition(sscToExtend.getSubstructure(), grandParentAtomIndexSSC1, bondToAdd)){
-////                                                bondToAdd.setAtom(sscToExtend.getSubstructure().getAtom(parentAtomIndexSSC1), 0);
-////                                                bondToAdd.setAtom(sscToExtend.getSubstructure().getAtom(grandParentAtomIndexSSC1), 1);
-////                                                sscToExtend.getSubstructure().addBond(bondToAdd);
-////                                            }
-////                                        }
-////                                    }
-////                                }
-//                            }
+                        IBond bondToAdd = completeConnectionTreeSSC2.getBond(nodeKeyInCompleteConnectionTreeSSC2, childNodeToAppend.getKey()).clone();
+                        if(!Utils.isValidBondAddition(ssc1Extended.getSubstructure(), nodeKeyInCompleteConnectionTreeSSC1, bondToAdd)){
+                          continue;
+                        }
+
+                        ConnectionTree connectionTreeToAddSSC2 = hose.Utils.getSubtree(completeConnectionTreeSSC2, childNodeToAppend.getKey());
+                        System.out.println("-> subtree would be: " + connectionTreeToAddSSC2 + "\n" + connectionTreeToAddSSC2.getKeys(true));
+                        int counter = 1;
+                        for (final int substructureTreeNodeKeySSC2 : connectionTreeToAddSSC2.getKeys(true)) {
+                            atomMappingsTemp.put((ssc1Extended.getAtomCount() - 1) + counter, substructureTreeNodeKeySSC2);
+                            counter++;
+                        }
+                        System.out.println(" -> atom mappings temp: " + atomMappingsTemp);
+                        System.out.println("is valid bond addition? -> true");
+
+                        ssc1Extended = Assembly.extendSSC(ssc1Extended, ssc2, connectionTreeToAddSSC2, nodeKeyInCompleteConnectionTreeSSC1, bondToAdd);
 
 
-                        } else {
-                            // 1. add signal from SSC2 to SSC1 and check for predicted (sub)spectrum validation
-                            // 2. check valid bond addition; add atom and bond to parent
-                            // 3. take connection tree of nodeKeyInCompleteConnectionTreeSSC2 as root and add all non-visited child nodes
-                            //  -> add atom and bond of child nodes as well as ring closures
-
-
-
-
-//                            if(completeConnectionTreeSSC2.getBond(nodeKeyInCompleteConnectionTreeSSC2, childNodeToAppend.getKey()) == null){
-//                                System.out.println("completeConnectionTreeSSC2: " + completeConnectionTreeSSC2);
-//                                System.out.println("!!! bond between " + nodeKeyInCompleteConnectionTreeSSC2 + " and " + childNodeToAppend.getKey() + " does not exist -> !!!! SKIP !!!!");
-//                                continue;
-//                            }
-                            IBond bondToAdd = completeConnectionTreeSSC2.getBond(nodeKeyInCompleteConnectionTreeSSC2, childNodeToAppend.getKey()).clone();
-                            if(Assembly.isValidBondAddition(ssc1Extended.getSubstructure(), nodeKeyInCompleteConnectionTreeSSC1, bondToAdd)){
-
-                                ConnectionTree substructureTreeToAddSSC2 = hose.Utils.getSubtree(completeConnectionTreeSSC2, childNodeToAppend.getKey());
-                                System.out.println(" JOOO: " + (substructureTreeToAddSSC2 == null));
-                                System.out.println(" JOOO 2: " + (substructureTreeToAddSSC2.getNodesCount()));
-                                System.out.println("-> subtree would be: " + substructureTreeToAddSSC2 + "\n" + substructureTreeToAddSSC2.getKeys(true));
-                                int counter = 1;
-                                for (final int substructureTreeNodeKeySSC2 : substructureTreeToAddSSC2.getKeys(true)) {
-                                    atomMappingsTemp.put((ssc1Extended.getAtomCount() - 1) + counter, substructureTreeNodeKeySSC2);
-                                    counter++;
-                                }
-                                System.out.println(" -> atom mappings temp: " + atomMappingsTemp);
-
-                                IAtomContainer substructureToAddSSC2 = HOSECodeBuilder.buildAtomContainer(substructureTreeToAddSSC2);
-                                System.out.println("subtree size: " + substructureToAddSSC2.getAtomCount());
-                                ssc1Extended.getSubstructure().add(substructureToAddSSC2);
-
-                                bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom((ssc1Extended.getAtomCount() - 1) - (substructureToAddSSC2.getAtomCount() - 1)), 0);
-                                bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(nodeKeyInCompleteConnectionTreeSSC1), 1);
-                                System.out.println("is valid bond addition? -> true");
-                                ssc1Extended.getSubstructure().addBond(bondToAdd);
-
-                                // add signals and assignments from added subtructure tree in SSC2 to SSC1
-                                for (final int nodeKeyInSubtreeSSC2 : substructureTreeToAddSSC2.getKeys(true)){
-                                    signalToAdd = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeKeyInSubtreeSSC2));
-                                    if(signalToAdd != null){
-                                        ssc1Extended.getSubspectrum().addSignal(signalToAdd);
-                                        int index = new ArrayList<>(substructureTreeToAddSSC2.getKeys(true)).indexOf(nodeKeyInSubtreeSSC2);
-                                        index += ((ssc1Extended.getAtomCount() - 1) - (substructureToAddSSC2.getAtomCount() - 1));
-                                        ssc1Extended.getAssignments().addAssignment(new int[]{index});
-                                    }
-                                }
-
-                                ConnectionTree completeConnectionTreeSSC1 = HOSECodeBuilder.buildConnectionTree(ssc1Extended.getSubstructure(), i, null);
-                                // try to close rings directly from added subtree of SSC2
-                                ConnectionTreeNode nodeSSC1, parentNodeSSC1;
-                                // for each node in added subtree
-                                for (final int nodeKeyInSubtreeSSC2 : substructureTreeToAddSSC2.getKeys(true)){
-                                    // if node is ring closure point
-                                    if(completeConnectionTreeSSC2.getNode(nodeKeyInSubtreeSSC2).getParentNodes().size() > 1){
-                                        // then check for each (additional) parent node whether there is a bond missing
-                                        for (final ConnectionTreeNode parentNodeSSC2 : completeConnectionTreeSSC2.getNode(nodeKeyInSubtreeSSC2).getParentNodes()){
+                        // try to close rings directly from added (and mapped) subtree of SSC2 to mapped atoms in SSC1
+                        ConnectionTree completeConnectionTreeSSC1 = HOSECodeBuilder.buildConnectionTree(ssc1Extended.getSubstructure(), i, null);
+                        ConnectionTreeNode nodeSSC1, parentNodeSSC1;
+                        // for each node in added subtree
+                        for (final int nodeKeyInSubtreeSSC2 : connectionTreeToAddSSC2.getKeys(true)){
+                            // if node is ring closure point
+                            if(completeConnectionTreeSSC2.getNode(nodeKeyInSubtreeSSC2).getParentNodes().size() > 1){
+                                // then check for each (additional) parent node whether there is a bond missing
+                                for (final ConnectionTreeNode parentNodeSSC2 : completeConnectionTreeSSC2.getNode(nodeKeyInSubtreeSSC2).getParentNodes()){
 //                                            // skip current parent node (ancestor of root of subtree)
 //                                            if(parentNodeSSC2.getKey() == childNodeToAppend.getKey()){
 //                                                continue;
 //                                            }
-                                            System.out.println(" FOR " + nodeKeyInSubtreeSSC2 + " -> PARENT NODE: " + parentNodeSSC2.getKey());
-                                            nodeSSC1 = null;
-                                            parentNodeSSC1 = null;
-                                            if(atomMappingsTemp.containsValue(parentNodeSSC2.getKey())){
-                                                System.out.println(" HUHU");
-                                                for (final Entry<Integer, Integer> entry : atomMappingsTemp.entrySet()){
-                                                    if(entry.getValue() == parentNodeSSC2.getKey()){
-                                                        System.out.println(" HUHU 1");
-                                                        parentNodeSSC1 = completeConnectionTreeSSC1.getNode(entry.getKey());
-                                                    }
-                                                    if(entry.getValue() == nodeKeyInSubtreeSSC2){
-                                                        System.out.println(" HUHU 2");
-                                                        nodeSSC1 = completeConnectionTreeSSC1.getNode(entry.getKey());
-                                                    }
-                                                    if((nodeSSC1 != null) && (parentNodeSSC1 != null)){
-                                                        System.out.println(" HUHU 3");
-                                                        System.out.println(" --> EQU: " + nodeSSC1.getKey() + " - " + parentNodeSSC1.getKey());
-                                                        break;
-                                                    }
-                                                }
+                                    nodeSSC1 = null;
+                                    parentNodeSSC1 = null;
+                                    if(atomMappingsTemp.containsValue(parentNodeSSC2.getKey())){
+                                        for (final Entry<Integer, Integer> entry : atomMappingsTemp.entrySet()){
+                                            if(entry.getValue() == parentNodeSSC2.getKey()){
+                                                parentNodeSSC1 = completeConnectionTreeSSC1.getNode(entry.getKey());
                                             }
-                                            if((nodeSSC1 != null) && (parentNodeSSC1 != null)
-                                                    && (ssc1Extended.getSubstructure().getBond(
-                                                    ssc1Extended.getSubstructure().getAtom(nodeSSC1.getKey()),
-                                                    ssc1Extended.getSubstructure().getAtom(parentNodeSSC1.getKey())) == null)){
-                                                bondToAdd = ssc2.getSubstructure().getBond(ssc2.getSubstructure().getAtom(nodeKeyInSubtreeSSC2), ssc2.getSubstructure().getAtom(parentNodeSSC2.getKey())).clone();
-                                                if(Assembly.isValidBondAddition(ssc1Extended.getSubstructure(), nodeSSC1.getKey(), bondToAdd)
-                                                        && Assembly.isValidBondAddition(ssc1Extended.getSubstructure(), parentNodeSSC1.getKey(), bondToAdd)){
-                                                    bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(nodeSSC1.getKey()), 0);
-                                                    bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(parentNodeSSC1.getKey()), 1);
-                                                    ssc1Extended.getSubstructure().addBond(bondToAdd);
-
-                                                    System.out.println(" --> new BOND: " + nodeSSC1.getKey() + " - " + parentNodeSSC1.getKey());
-                                                }
+                                            if(entry.getValue() == nodeKeyInSubtreeSSC2){
+                                                nodeSSC1 = completeConnectionTreeSSC1.getNode(entry.getKey());
+                                            }
+                                            if((nodeSSC1 != null) && (parentNodeSSC1 != null)){
+                                                break;
                                             }
                                         }
                                     }
+                                    if((nodeSSC1 != null) && (parentNodeSSC1 != null)
+                                            && (ssc1Extended.getSubstructure().getBond(
+                                            ssc1Extended.getSubstructure().getAtom(nodeSSC1.getKey()),
+                                            ssc1Extended.getSubstructure().getAtom(parentNodeSSC1.getKey())) == null)){
+                                        bondToAdd = ssc2.getSubstructure().getBond(ssc2.getSubstructure().getAtom(nodeKeyInSubtreeSSC2), ssc2.getSubstructure().getAtom(parentNodeSSC2.getKey())).clone();
+                                        if(Utils.isValidBondAddition(ssc1Extended.getSubstructure(), nodeSSC1.getKey(), bondToAdd)
+                                                && Utils.isValidBondAddition(ssc1Extended.getSubstructure(), parentNodeSSC1.getKey(), bondToAdd)){
+                                            bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(nodeSSC1.getKey()), 0);
+                                            bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(parentNodeSSC1.getKey()), 1);
+                                            ssc1Extended.getSubstructure().addBond(bondToAdd);
+                                        }
+                                    }
                                 }
-
-
-                            } else {
-                                System.out.println("is valid bond addition? -> false");
                             }
-
                         }
                     }
                 }
@@ -1417,13 +1333,15 @@ public class Assembly {
                 // if a valid substructure and also subspectrum could be assembled
                 if(Assembly.isValidSubspectrum(ssc1Extended.getSubspectrum(), querySpectrum, shiftTol, thrsMatchFactor)){
 
+                    System.out.println("\nvalid SSC built: ");
                     ssc1Extended.update();
-                    if((ssc1Extended.getAtomCount() == ssc1.getAtomCount())
-                            && (ssc1Extended.getBondCount() == ssc1.getBondCount())){
+                    if((ssc1Extended.getAtomCount() <= ssc1.getAtomCount())
+                            && (ssc1Extended.getBondCount() <= ssc1.getBondCount())){
+                        System.out.println("-> but no extension happened");
                         continue;
                     }
 
-                    System.out.println("\nvalid SSC built: ");
+
                     System.out.println("substructure: " + ssc1Extended.getSubstructure().getAtomCount());
                     System.out.println("subspectrum : " + ssc1Extended.getSubspectrum().getShifts(0));
                     System.out.println("assignments : " + ssc1Extended.getAssignments().getAssignments(0) + "\n");
@@ -1451,14 +1369,14 @@ public class Assembly {
                 return bondCountComp;
             }
 
-            return  Double.compare(Matcher.calculateAverageDeviation(validExtendedSSC1.getSubspectrum(), querySpectrum, 0, 0, shiftTol), Matcher.calculateAverageDeviation(validExtendedSSC2.getSubspectrum(), querySpectrum, 0, 0, shiftTol));
+            return Double.compare(Matcher.calculateAverageDeviation(validExtendedSSC1.getSubspectrum(), querySpectrum, 0, 0, shiftTol), Matcher.calculateAverageDeviation(validExtendedSSC2.getSubspectrum(), querySpectrum, 0, 0, shiftTol));
         });
 
         for (int i = 0; i < validSSCExtensions.size(); i++){
             System.out.println(" -------> for valid extension " + i + " with size " + validSSCExtensions.get(i).getAtomCount() + " and " + validSSCExtensions.get(i).getBondCount() + " and " + Matcher.calculateAverageDeviation(validSSCExtensions.get(i).getSubspectrum(), querySpectrum, 0, 0, shiftTol));
         }
 
-        return validSSCExtensions.get(0);//return ssc1;
+        return validSSCExtensions.get(0);
 
 
 
@@ -1542,6 +1460,71 @@ public class Assembly {
 //        return ssc1;
     }
 
+    private static SSC extendSSC(final SSC ssc1, final SSC ssc2, final ConnectionTree connectionTreeToAddSSC, final Integer parentAtomIndexToLinkSSC1, final IBond bondToLinkSSC2){
+
+        final SSC ssc1Backup;
+        try {
+            ssc1Backup = ssc1.getClone();
+        } catch (Exception e) {
+            return ssc1;
+        }
+        ConnectionTreeNode nodeInSphere;
+        // add root atom of connection tree to add to SSC1 and link it via a given bond to parent atom in SSC1
+        if(!ssc1.addAtom(connectionTreeToAddSSC.getRootNode().getAtom(), bondToLinkSSC2, parentAtomIndexToLinkSSC1)){
+            return ssc1Backup;
+        }
+        Signal signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, connectionTreeToAddSSC.getRootNode().getKey()));
+        if(signalToAddSSC2 != null){
+            if(!ssc1.addSignal(signalToAddSSC2, ssc1.getAtomCount() - 1)){
+                return ssc1Backup;
+            }
+        }
+
+        // for each sphere: add the atom which is stored as node to atom container and set bonds between parent nodes
+        for (int s = 1; s <= connectionTreeToAddSSC.getMaxSphere(); s++) {
+            // first add all atoms and its parents (previous sphere only) to structure
+            for (int i = 0; i < connectionTreeToAddSSC.getNodesInSphere(s).size(); i++) {
+                nodeInSphere = connectionTreeToAddSSC.getNodesInSphere(s).get(i);
+                if(nodeInSphere.isRingClosureNode()){
+                   continue;
+                }
+                for (final ConnectionTreeNode parentNode : nodeInSphere.getParentNodes()){
+                    if(parentNode.getSphere() < nodeInSphere.getSphere()){
+                        if(!ssc1.addAtom(nodeInSphere.getAtom(), connectionTreeToAddSSC.getBond(parentNode.getKey(), nodeInSphere.getKey()), ssc1.getSubstructure().indexOf(parentNode.getAtom()))){
+                            return ssc1Backup;
+                        }
+                        signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeInSphere.getKey()));
+                        if(signalToAddSSC2 != null){
+                            if(!ssc1.addSignal(signalToAddSSC2, ssc1.getAtomCount() - 1)){
+                                return ssc1Backup;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ConnectionTreeNode parentNode;
+        IBond bondToParent;
+        for (int s = 1; s <= connectionTreeToAddSSC.getMaxSphere(); s++) {
+            // and as second add the remaining bonds (ring closures) to structure
+            for (int i = 0; i < connectionTreeToAddSSC.getNodesInSphere(s).size(); i++) {
+                nodeInSphere = connectionTreeToAddSSC.getNodesInSphere(s).get(i);
+                if(nodeInSphere.isRingClosureNode()){
+                    continue;
+                }
+                for (int j = 0; j < nodeInSphere.getParentNodes().size(); j++) {
+                    parentNode = nodeInSphere.getParentNodes().get(j);
+                    if(ssc1.getSubstructure().getBond(ssc1.getSubstructure().getAtom(ssc1.getSubstructure().indexOf(nodeInSphere.getAtom())),
+                            ssc1.getSubstructure().getAtom(ssc1.getSubstructure().indexOf(parentNode.getAtom()))) == null){
+                        bondToParent = nodeInSphere.getBondsToParents().get(j);
+                        ssc1.addBond(bondToParent, ssc1.getSubstructure().indexOf(nodeInSphere.getAtom()), ssc1.getSubstructure().indexOf(parentNode.getAtom()));
+                    }
+                }
+            }
+        }
+
+        return ssc1;
+    }
 
 
     //    private static HashMap<Integer, Integer> extendSSC(final SSC ssc1, final SSC ssc2, final HashMap<Integer, Integer> mappedAtomIndices, final double shiftTol) throws CDKException, CloneNotSupportedException{

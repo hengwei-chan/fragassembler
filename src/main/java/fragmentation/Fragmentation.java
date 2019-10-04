@@ -174,10 +174,10 @@ public class Fragmentation {
         final IAtomContainer substructure = Fragmentation.buildSubstructure(structure, rootAtomIndex, maxSphere);
         final Spectrum subspectrum = new Spectrum(spectrum.getNuclei());
         final Assignment subassignment = new Assignment(subspectrum);
-        IAtom atomInStructure, atomInSubstructure;
+        IAtom atomInStructure;//, atomInSubstructure;
         for (int j = 0; j < substructure.getAtomCount(); j++) {
             atomInStructure = structure.getAtom(substructureAtomIndices.get(j));
-            atomInSubstructure = substructure.getAtom(j);
+//            atomInSubstructure = substructure.getAtom(j);
             if(atomInStructure.getSymbol().equals(Utils.getAtomTypeFromSpectrum(subspectrum, 0))){                
                 if((assignment.getIndex(0, substructureAtomIndices.get(j)) == null) || (spectrum.getSignal(assignment.getIndex(0, substructureAtomIndices.get(j))) == null)){
                     return null;
@@ -185,14 +185,16 @@ public class Fragmentation {
                 subspectrum.addSignal(spectrum.getSignal(assignment.getIndex(0, substructureAtomIndices.get(j))));
                 subassignment.addAssignment(new int[]{j});                
             }                        
-            atomInSubstructure.setIsInRing(atomInStructure.isInRing());
-            atomInSubstructure.setIsAromatic(atomInStructure.isAromatic());
-            atomInSubstructure.setCharge(atomInStructure.getCharge());
-            atomInSubstructure.setValency(atomInStructure.getValency());
-            for (final IAtom connectedAtomInSubstructure : substructure.getConnectedAtomsList(atomInSubstructure)) {
-                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsInRing(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isInRing());
-                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsAromatic(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isAromatic());
-            }
+//            atomInSubstructure.setIsInRing(atomInStructure.isInRing());
+//            atomInSubstructure.setIsAromatic(atomInStructure.isAromatic());
+//            atomInSubstructure.setCharge(atomInStructure.getCharge());
+//            atomInSubstructure.setValency(atomInStructure.getValency());
+//            atomInSubstructure.setImplicitHydrogenCount(atomInStructure.getImplicitHydrogenCount());
+//            atomInSubstructure.setHybridization(atomInStructure.getHybridization());
+//            for (final IAtom connectedAtomInSubstructure : substructure.getConnectedAtomsList(atomInSubstructure)) {
+//                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsInRing(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isInRing());
+//                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsAromatic(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isAromatic());
+//            }
         }
         subspectrum.setSolvent(spectrum.getSolvent());
         subspectrum.setSpectrometerFrequency(spectrum.getSpectrometerFrequency());

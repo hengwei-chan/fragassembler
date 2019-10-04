@@ -19,6 +19,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.bson.Document;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+
 /**
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
@@ -33,7 +36,12 @@ public class SSCConverter {
                 GSON.fromJson(((Document) sscDocument.get("assignment")).toJson(), Assignment.class),
                 GSON.fromJson(((Document) sscDocument.get("substructure")).toJson(), ExtendedConnectionMatrix.class).toAtomContainer(),
                 sscDocument.getInteger("rootAtomIndex"),
-                sscDocument.getInteger("maxSphere")
+                sscDocument.getInteger("maxSphere"),
+//                GSON.fromJson(((Document) sscDocument.get("HOSECodes")).toJson(), HashMap.class),
+//                GSON.fromJson(((Document) sscDocument.get("connectionTrees")).toJson(), HashMap.class),
+                GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(), HashMap.class),
+                GSON.fromJson(((Document) sscDocument.get("unsaturatedAtomIndices")).toJson(), ArrayList.class),
+                GSON.fromJson(((Document) sscDocument.get("multiplicitySections")).toJson(), HashMap.class)
                 );
         ssc.setIndex(sscDocument.getLong("index"));
 
@@ -42,13 +50,18 @@ public class SSCConverter {
     
     public static Document SSCToDocument(final SSC ssc, final Long sscIndex){
         final Document document = new Document();
+        document.append("HOSECode", ssc.getHOSECode(ssc.getRootAtomIndex()));
         document.append("substructure", Document.parse(GSON.toJson(GSON.toJsonTree(new ExtendedConnectionMatrix(ssc.getSubstructure()), ExtendedConnectionMatrix.class))));
         document.append("subspectrum", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getSubspectrum(), Spectrum.class))));
         document.append("assignment", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getAssignments(), Assignment.class))));
         document.append("maxSphere", ssc.getMaxSphere());
         document.append("rootAtomIndex", ssc.getRootAtomIndex());
         document.append("index", sscIndex);
-        document.append("multSections", ssc.getMultiplicitySections());
+//        document.append("HOSECodes", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getHOSECodes(), HashMap.class))));
+//        document.append("connectionTrees", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getConnectionTrees(), HashMap.class))));
+        document.append("shifts", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShifts(), HashMap.class))));
+        document.append("unsaturatedAtomIndices", ssc.getUnsaturatedAtomIndices());
+        document.append("multiplicitySections", ssc.getMultiplicitySections());
         
         return document;
     }
@@ -60,7 +73,13 @@ public class SSCConverter {
                 GSON.fromJson(jsonObject.get("assignment"), Assignment.class),
                 GSON.fromJson(jsonObject.get("substructure"), ExtendedConnectionMatrix.class).toAtomContainer(),
                 jsonObject.get("rootAtomIndex").getAsInt(),
-                jsonObject.get("maxSphere").getAsInt()
+                jsonObject.get("maxSphere").getAsInt(),
+//                GSON.fromJson(jsonObject.get("HOSECodes"), HashMap.class),
+//                GSON.fromJson(jsonObject.get("connectionTrees"), HashMap.class),
+                GSON.fromJson(jsonObject.get("shifts"), HashMap.class),
+                GSON.fromJson(jsonObject.get("unsaturatedAtomIndices"), ArrayList.class),
+                GSON.fromJson(jsonObject.get("multiplicitySections"), HashMap.class)
+
         );
         ssc.setIndex(jsonObject.get("index").getAsJsonObject().get("$numberLong").getAsLong());
 
