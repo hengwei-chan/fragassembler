@@ -18,6 +18,7 @@ import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
 import hose.HOSECodeBuilder;
 import hose.model.ConnectionTree;
+import hose.model.ConnectionTreeNode;
 import org.openscience.cdk.Bond;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
@@ -26,6 +27,7 @@ import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 
 /**
@@ -44,6 +46,8 @@ public final class SSC {
     // stores all shifts for each single atom in SSC and its HOSE code
     private final HashMap<Integer, String> HOSECodes;
     private final HashMap<Integer, ArrayList<Double>> shifts;
+    private final HashMap<Integer, Double[]> shiftsRanges;
+    private int[] attachedHydrogensInOuterSphere;
     // connection tree holding the spherical information about the substructure
     private final HashMap<Integer, ConnectionTree> connectionTrees;
     /**
@@ -80,6 +84,7 @@ public final class SSC {
         this.maxSphere = maxSphere;
         this.HOSECodes = new HashMap<>();
         this.shifts = new HashMap<>();
+        this.shiftsRanges = new HashMap<>();
 
         this.initSignalShifts();
 
@@ -100,14 +105,13 @@ public final class SSC {
      * @param rootAtomIndex
      * @param maxSphere
      * @param multiplicitySections
-     * @param HOSECodes
      * @param shifts
-     * @param connectionTrees
+     * @param shiftsRanges
      * @param unsaturatedAtomIndices
      * @throws Exception
      */
-//    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, String> HOSECodes, final HashMap<Integer, ConnectionTree> connectionTrees, final HashMap<Integer, ArrayList<Double>> shifts, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
-    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, ArrayList<Double>> shifts, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
+//    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, String> HOSECodes, final HashMap<Integer, ConnectionTree> connectionTrees, final int[] attachedHydrogensInOuterSphere, final HashMap<Integer, ArrayList<Double>> shifts, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
+    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, ArrayList<Double>> shifts, final HashMap<Integer, Double[]> shiftsRanges, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
         this.subspectrum = subspectrum;
         this.assignment = assignment;
         this.substructure = substructure;
@@ -115,11 +119,13 @@ public final class SSC {
         this.maxSphere = maxSphere;
 //        this.HOSECodes = HOSECodes;
 //        this.connectionTrees = connectionTrees;
+//        this.attachedHydrogensInOuterSphere = attachedHydrogensInOuterSphere;
         this.HOSECodes = new HashMap<>();
         this.connectionTrees = new HashMap<>();
         this.updateHOSECodes();
 
         this.shifts = shifts;
+        this.shiftsRanges = shiftsRanges;
         this.unsaturatedAtomIndices = unsaturatedAtomIndices;
         this.multiplicitySections = multiplicitySections;
 
@@ -136,21 +142,16 @@ public final class SSC {
      * @throws java.lang.CloneNotSupportedException
      */
     public SSC getClone() throws Exception {
-      return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere);
+      return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere);//, this.shifts, this.unsaturatedAtomIndices, this.multiplicitySections);
     }
 
     /**
-     * Returns the SSC substructure as HOSE code with the beginning at the SSC's root atom. <br>
-     * All HOSE code are updated beforehand.
+     * Returns the SSC substructure as HOSE code with the beginning at the SSC's root atom.
      *
-     * @return
-     * @throws CDKException
+     * @return HOSE code of SSC's root atom
      *
-     * @see #updateHOSECodes()
      */
-    public String getAsHOSECode() throws CDKException {
-        this.updateHOSECodes();
-
+    public String getAsHOSECode() {
         return this.getHOSECode(this.getRootAtomIndex());
     }
     
@@ -170,13 +171,21 @@ public final class SSC {
         this.updateHOSECodes();
         this.updateMultiplicitySections();
     }
+
+    private void updateAttachedHydrogensInOuterSphere(){
+        this.attachedHydrogensInOuterSphere = this.getAtomIndicesInHOSECodeSphere(this.getRootAtomIndex(), this.getMaxSphere());
+    }
+
+    public int[] getAttachedHydrogensInOuterSphere(){
+        return this.attachedHydrogensInOuterSphere;
+    }
     
     @Override
     public String toString(){
         String output = "\natom types and indices:";
-        for (final String atomType : this.atomTypeIndices.keySet()) {
-            output += "\n-> " + atomType + ": " +  this.atomTypeIndices.get(atomType);
-        }
+//        for (final String atomType : this.atomTypeIndices.keySet()) {
+//            output += "\n-> " + atomType + ": " +  this.atomTypeIndices.get(atomType);
+//        }
         output += "\nunsaturated atoms (indices): \n-> " + this.unsaturatedAtomIndices;        
         output += "\nmultiplicities and shift section:";
         for (final String mult : this.multiplicitySections.keySet()) {
@@ -196,6 +205,7 @@ public final class SSC {
         for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
             this.shifts.put(this.assignment.getAssignment(0, i), new ArrayList<>());
             this.shifts.get(this.assignment.getAssignment(0, i)).add(this.subspectrum.getSignal(i).getShift(0));
+            this.shiftsRanges.put(this.assignment.getAssignment(0, i), new Double[]{this.subspectrum.getSignal(i).getShift(0), this.subspectrum.getSignal(i).getShift(0)});
         }
     }
 
@@ -271,9 +281,17 @@ public final class SSC {
     private void calculateSignalShifts() {
         for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
             this.subspectrum.setShift(Utils.getMedian(this.shifts.get(this.getAssignments().getAssignment(0, i))), 0, i);
+            this.shiftsRanges.put(i, new Double[]{Collections.min(this.shifts.get(this.getAssignments().getAssignment(0, i))), Collections.max(this.shifts.get(this.getAssignments().getAssignment(0, i)))});
         }
     }
 
+    public HashMap<Integer, Double[]> getShiftsRanges(){
+        return this.shiftsRanges;
+    }
+
+    /**
+     * Removes shifts for each signal of this SSC subspectrum which are considered as outlier ({@link Utils#removeOutliers(ArrayList, double)}).
+     */
     public void removeSignalShiftsOutlier(){
         for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
             this.removeSignalShiftsOutlier(i);
@@ -290,7 +308,22 @@ public final class SSC {
         }
         this.connectionTrees.put(atomIndexInSubstructure, HOSECodeBuilder.buildConnectionTree(this.substructure, atomIndexInSubstructure, null));//this.maxSphere));
         if(atomIndexInSubstructure == this.getRootAtomIndex()){
-            this.maxSphere = this.getConnectionTree(atomIndexInSubstructure).getMaxSphere();
+            boolean sphereContainsNonRingClosureNodes;
+            int maxSphereBuilt = this.getConnectionTree(atomIndexInSubstructure).getMaxSphere();
+            for (int s = 0; s <= maxSphereBuilt; s++) {
+                sphereContainsNonRingClosureNodes = false;
+                for (final ConnectionTreeNode nodeInLastSphere : this.getConnectionTree(atomIndexInSubstructure).getNodesInSphere(s)){
+                    if(!nodeInLastSphere.isRingClosureNode()){
+                        sphereContainsNonRingClosureNodes = true;
+                        break;
+                    }
+                }
+                if (sphereContainsNonRingClosureNodes){
+                    this.maxSphere = s;
+                } else {
+                    break;
+                }
+            }
         }
         
         return true;
@@ -351,6 +384,10 @@ public final class SSC {
         }
         this.HOSECodes.put(atomIndexInSubstructure, HOSECodeBuilder.buildHOSECode(this.connectionTrees.get(atomIndexInSubstructure), false));
 
+        if(atomIndexInSubstructure == this.getRootAtomIndex()){
+            this.updateAttachedHydrogensInOuterSphere();
+        }
+
         return true;
     }
     
@@ -363,18 +400,31 @@ public final class SSC {
     }
 
     /**
+     * Returns the atom indices in an HOSE code sphere for a certain root atom.
+     * The indices of ring closure nodes in connection trees are removed.
+     *
      * @param atomIndexInSubstructure
      * @param sphere
      * @return
      *
-     * @deprecated
      */
-    public ArrayList<Integer> getAtomIndicesInHOSECodeSpheres(final int atomIndexInSubstructure, final int sphere) {
+    public int[] getAtomIndicesInHOSECodeSphere(final int atomIndexInSubstructure, final int sphere) {
         if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
             return null;
         }
+        final ArrayList<ConnectionTreeNode> nodesInSphere = this.connectionTrees.get(atomIndexInSubstructure).getNodesInSphere(sphere);
+        final ArrayList<Integer> nodeIndicesInSphere = new ArrayList<>();
+        for (final ConnectionTreeNode nodeInSphere : nodesInSphere){
+            if(!nodeInSphere.isRingClosureNode()){
+                nodeIndicesInSphere.add(nodeInSphere.getKey());
+            }
+        }
+        final int[] atomIndicesInSphere = new int[nodeIndicesInSphere.size()];
+        for (int i = 0; i < nodeIndicesInSphere.size(); i++) {
+            atomIndicesInSphere[i] = nodeIndicesInSphere.get(i);
+        }
 
-        return this.connectionTrees.get(atomIndexInSubstructure).getNodeKeysInSphere(sphere);
+        return atomIndicesInSphere;
     }
 
     public ConnectionTree getConnectionTree(final int atomIndexInSubstructure){
