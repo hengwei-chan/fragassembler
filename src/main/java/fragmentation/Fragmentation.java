@@ -43,14 +43,18 @@ public class Fragmentation {
      * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @param nThreads Number of threads to use for parallelization
+     * @param removeSignalShiftsOulier indicates whether shifts which are considered as outlier should be removed
+     *                                 ({@link SSCLibrary#removeSignalShiftsOutlier()})
+     *
      * @return
      * @throws java.lang.InterruptedException
      * @throws org.openscience.cdk.exception.CDKException
      * @throws CloneNotSupportedException
+     *
      * @see Fragmentation#buildSSCs(Object[], int, long)
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads) throws InterruptedException, CDKException, CloneNotSupportedException {                
-        return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxSphere, nThreads, 0);
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final boolean removeSignalShiftsOulier) throws InterruptedException, CDKException, CloneNotSupportedException {
+        return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxSphere, nThreads, 0, removeSignalShiftsOulier);
     }
     
     /**
@@ -63,11 +67,14 @@ public class Fragmentation {
      * all directions
      * @param nThreads Number of threads to use for parallelization
      * @param offset offset value as starting point for indexing the SSCs
+     * @param removeSignalShiftsOulier indicates whether shifts which are considered as outlier should be remove
+     *                                 ({@link SSCLibrary#removeSignalShiftsOutlier()})
+     *
      * @return
      * @throws java.lang.InterruptedException
      * @see Fragmentation#buildSSCs(Object[], int, long)
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final long offset) throws InterruptedException {
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final long offset, final boolean removeSignalShiftsOulier) throws InterruptedException {
         // initialize an executor
         final ExecutorService executor = Utils.initExecuter(nThreads);
         final SSCLibrary sscLibrary = new SSCLibrary();
@@ -99,6 +106,9 @@ public class Fragmentation {
         // shut down the executor service
         Utils.stopExecuter(executor, 5);
 
+        if(removeSignalShiftsOulier){
+            sscLibrary.removeSignalShiftsOutlier();
+        }
 
         return sscLibrary;
     }
