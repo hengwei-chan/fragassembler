@@ -13,13 +13,11 @@ package model;
 
 import casekit.NMR.Utils;
 import casekit.NMR.dbservice.NMRShiftDB;
-import casekit.NMR.model.Signal;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import fragmentation.Fragmentation;
-import hose.model.ConnectionTree;
 import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
 
@@ -39,8 +37,7 @@ import java.util.logging.Logger;
 public final class SSCLibrary {
 
     private final LinkedHashMap<Long, SSC> map;
-    private final HashMap<String, ArrayList<Double>> HOSECodeLookupTableShifts;
-    private final HashMap<String, ArrayList<Long>> HOSECodeLookupTableSSCIndices;    
+    private final HashMap<String, ArrayList<Long>> HOSECodeLookupTable;
     private int nThreads;
     
     /**
@@ -58,8 +55,7 @@ public final class SSCLibrary {
      */
     public SSCLibrary(final int nThreads){
         this.map = new LinkedHashMap<>();
-        this.HOSECodeLookupTableShifts = new HashMap<>();
-        this.HOSECodeLookupTableSSCIndices = new HashMap<>();
+        this.HOSECodeLookupTable = new HashMap<>();
         this.nThreads = nThreads;
     }
     
@@ -67,109 +63,88 @@ public final class SSCLibrary {
      * Creates/Updates lookup tables for generated HOSE codes regarding the 
      * given SSC library. 
      **
-     * @see #getHOSECodeLookupTableSSCIndices()
-     * @see #getHOSECodeLookupTableShifts() 
+     * @see #getHOSECodeLookupTable()
+     *
+     * @deprecated
      */
-    public void buildHOSELookupTables() {
-        this.HOSECodeLookupTableShifts.clear();
-        this.HOSECodeLookupTableSSCIndices.clear();
+    public void buildHOSELookupTables() throws CDKException {
+        this.HOSECodeLookupTable.clear();
         String HOSECode;
-        Signal signal; 
         for (final SSC ssc : this.map.values()) {
             if(ssc != null){
-                HOSECode = ssc.getHOSECode(ssc.getRootAtomIndex());
-                if (!this.HOSECodeLookupTableSSCIndices.containsKey(HOSECode)) {
-                    this.HOSECodeLookupTableSSCIndices.put(HOSECode, new ArrayList<>());
-                    this.HOSECodeLookupTableShifts.put(HOSECode, new ArrayList<>());
+                HOSECode = ssc.getAsHOSECode();
+                if (!this.HOSECodeLookupTable.containsKey(HOSECode)) {
+                    this.HOSECodeLookupTable.put(HOSECode, new ArrayList<>());
                 }
-                this.HOSECodeLookupTableSSCIndices.get(HOSECode).add(ssc.getIndex());
-                signal = ssc.getSubspectrum().getSignal(ssc.getAssignments().getIndex(0, ssc.getRootAtomIndex()));
-                if(signal != null){
-                    this.HOSECodeLookupTableShifts.get(HOSECode).add(signal.getShift(0));
-                }
+                this.HOSECodeLookupTable.get(HOSECode).add(ssc.getIndex());
             }            
         }
     }
-    
-    /**
-     * Returns a HashMap of the shifts for each HOSE code of that SSC 
-     * library. 
-     * Before usage of this method, the HOSE code lookup table has to been 
-     * built via {@link #buildHOSELookupTables()}.
-     *
-     * @return HashMap with HOSE codes as keys and lists of chemical shifts as
-     * values
-     *
-     * @see #buildHOSELookupTables() 
-     */
-    public HashMap<String, ArrayList<Double>> getHOSECodeLookupTableShifts() {
-        return this.HOSECodeLookupTableShifts;
-    }
-    
-    /**
-     * Builds both HOSE code lookup tables of this SSC library containing a list 
-     * of shifts as well as a list of SSC indices for each HOSE code. 
-     * Then it will be exported into a given MongoDB collection.      
-     *
-     * @param collection MongoDB collection to store in
-     * @throws java.lang.InterruptedException 
-     *
-     * @see #buildHOSELookupTables() 
-     */
-    public void exportHOSECodeLookupTable(final MongoCollection<Document> collection) throws InterruptedException {
-        
-        this.buildHOSELookupTables();
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<Document>> callables = new ArrayList<>();
-        // add all task to do
-        for (final String HOSECode : this.HOSECodeLookupTableShifts.keySet()) {
-            callables.add((Callable<Document>) () -> {
-                final Document document = new Document();  
-                final ArrayList<Double> shifts = this.HOSECodeLookupTableShifts.get(HOSECode);
-                document.append("HOSECode", HOSECode);
-                document.append("spheres", hose.Utils.getSpheresCount(HOSECode));
-                final Document documentShifts = new Document();
-                documentShifts.append("count", shifts.size());
-                documentShifts.append("min", (shifts.size() > 0) ? Collections.min(shifts) : null);
-                documentShifts.append("max", (shifts.size() > 0) ? Collections.max(shifts) : null);
-                documentShifts.append("rms", Utils.getRMS(shifts));
-                documentShifts.append("mean", Utils.getMean(shifts));
-                documentShifts.append("median", Utils.getMedian(shifts));
-                documentShifts.append("var", Utils.getVariance(shifts));
-                documentShifts.append("sd", Utils.getStandardDeviation(shifts));
-                documentShifts.append("shifts", shifts);
-                final Document documentSSCIndices = new Document();
-                documentSSCIndices.append("count", this.HOSECodeLookupTableSSCIndices.size());
-                documentSSCIndices.append("indices", this.HOSECodeLookupTableSSCIndices.get(HOSECode));
-                
-                document.append("shift", documentShifts);
-                document.append("ssc", documentSSCIndices);
 
-                return document;
-            });
-        }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((document) -> {
-                    try {
-                        collection.insertOne(document);
-                    } catch (Exception e) {
-                        System.err.println("export for key \"" + document.get("_id") + "\" failed: " + e.getMessage());
-                        System.out.println("-> document: \n" + document.toJson());
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);        
-    }
+//    /**
+//     * Builds both HOSE code lookup tables of this SSC library containing a list
+//     * of shifts as well as a list of SSC indices for each HOSE code.
+//     * Then it will be exported into a given MongoDB collection.
+//     *
+//     * @param collection MongoDB collection to store in
+//     * @throws java.lang.InterruptedException
+//     *
+//     * @see #buildHOSELookupTables()
+//     */
+//    public void exportHOSECodeLookupTable(final MongoCollection<Document> collection) throws InterruptedException {
+//
+//        this.buildHOSELookupTables();
+//        // initialize an executor for parallelization
+//        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+//        final ArrayList<Callable<Document>> callables = new ArrayList<>();
+//        // add all task to do
+//        for (final String HOSECode : this.HOSECodeLookupTableShifts.keySet()) {
+//            callables.add((Callable<Document>) () -> {
+//                final Document document = new Document();
+//                final ArrayList<Double> shifts = this.HOSECodeLookupTableShifts.get(HOSECode);
+//                document.append("HOSECode", HOSECode);
+//                document.append("spheres", hose.Utils.getSpheresCount(HOSECode));
+//                final Document documentShifts = new Document();
+//                documentShifts.append("count", shifts.size());
+//                documentShifts.append("min", (shifts.size() > 0) ? Collections.min(shifts) : null);
+//                documentShifts.append("max", (shifts.size() > 0) ? Collections.max(shifts) : null);
+//                documentShifts.append("rms", Utils.getRMS(shifts));
+//                documentShifts.append("mean", Utils.getMean(shifts));
+//                documentShifts.append("median", Utils.getMedian(shifts));
+//                documentShifts.append("var", Utils.getVariance(shifts));
+//                documentShifts.append("sd", Utils.getStandardDeviation(shifts));
+//                documentShifts.append("shifts", shifts);
+//                final Document documentSSCIndices = new Document();
+//                documentSSCIndices.append("count", this.HOSECodeLookupTable.size());
+//                documentSSCIndices.append("indices", this.HOSECodeLookupTable.get(HOSECode));
+//
+//                document.append("shift", documentShifts);
+//                document.append("ssc", documentSSCIndices);
+//
+//                return document;
+//            });
+//        }
+//        // execute all task in parallel
+//        executor.invokeAll(callables)
+//                .stream()
+//                .map(future -> {
+//                    try {
+//                        return future.get();
+//                    } catch (InterruptedException | ExecutionException e) {
+//                        throw new IllegalStateException(e);
+//                    }
+//                })
+//                .forEach((document) -> {
+//                    try {
+//                        collection.insertOne(document);
+//                    } catch (Exception e) {
+//                        System.err.println("export for key \"" + document.get("_id") + "\" failed: " + e.getMessage());
+//                        System.out.println("-> document: \n" + document.toJson());
+//                    }
+//                });
+//        // shut down the executor service
+//        Utils.stopExecuter(executor, 5);
+//    }
     
     /**
      * Returns a HashMap of the SSC indices for each HOSE code of that SSC 
@@ -182,8 +157,8 @@ public final class SSCLibrary {
      *
      * @see #buildHOSELookupTables() 
      */
-    public HashMap<String, ArrayList<Long>> getHOSECodeLookupTableSSCIndices() {
-        return this.HOSECodeLookupTableSSCIndices;
+    public HashMap<String, ArrayList<Long>> getHOSECodeLookupTable() {
+        return this.HOSECodeLookupTable;
     }
     
     public int getNThreads(){
@@ -364,7 +339,6 @@ public final class SSCLibrary {
      *
      * @param sscLibrary SSC library to add to this library
      * @throws java.lang.InterruptedException
-     * @see #containsSSC(long)
      */
     public void extend(final SSCLibrary sscLibrary) throws InterruptedException{
 //        this.map.putAll(sscLibrary.getMap());
@@ -414,7 +388,6 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException  
      * @throws java.lang.InterruptedException  
      * 
-     * @see #containsSSC(long)
      */
     public void extend(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
         // initialize an executor for parallelization
@@ -463,7 +436,6 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException  
      * @throws java.lang.InterruptedException  
      * 
-     * @see #containsSSC(long)
      */
     public void extend(final FindIterable<Document> queryResult) throws CDKException, CloneNotSupportedException, InterruptedException  {
         // initialize an executor for parallelization
@@ -512,7 +484,6 @@ public final class SSCLibrary {
      * @throws java.lang.CloneNotSupportedException  
      * @throws java.lang.InterruptedException  
      * 
-     * @see #containsSSC(long)
      */
     public void extend(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
         // initialize an executor for parallelization
@@ -564,11 +535,11 @@ public final class SSCLibrary {
      * @throws java.lang.InterruptedException
      * @throws java.lang.CloneNotSupportedException
      * 
-     * @see Fragmentation#buildSSCLibrary(HashMap, int, int, long)
+     * @see Fragmentation#buildSSCLibrary(HashMap, int, int, long, boolean)
      * @see #extend(String, String, int, long)
      */
     public void extend(final String pathToNMRShiftDB, final String property, final int maxSphere, final long offset) throws FileNotFoundException, CDKException, InterruptedException, CloneNotSupportedException {
-        this.extend(Fragmentation.buildSSCLibrary(NMRShiftDB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), maxSphere, this.nThreads, offset));
+        this.extend(Fragmentation.buildSSCLibrary(NMRShiftDB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), maxSphere, this.nThreads, offset, true));
     }
     
     /**
@@ -583,7 +554,6 @@ public final class SSCLibrary {
      * @throws java.io.FileNotFoundException
      * @throws org.openscience.cdk.exception.CDKException
      * @throws java.lang.CloneNotSupportedException
-     * @see #containsSSC(long)
      */
     public void extend(final String pathToJSON, final long offset) throws InterruptedException, FileNotFoundException, CDKException, CloneNotSupportedException{
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
@@ -623,58 +593,95 @@ public final class SSCLibrary {
     }
 
     /**
-     * Removes all duplicated SSCs based on HOSE code comparisons.
-     * If the multiplicities in last sphere differ or shift deviations are higher than a given tolerance value,
-     * then two SSCs are not considered to be the same.
+     * Checks whether a SSC with same structural properties already exists.
+     * This is based on HOSE code comparisons and hydrogen counts in last sphere. </br>
+     * If the attached hydrogens in last sphere differ, then two SSCs are not considered to be the same.
      *
-     * @param shiftTol shift tolerance value [ppm] in which chemical shifts are considered as the same
+     * @param ssc
+     * @return true if there already exists a SSC with same structural properties
      *
      */
-    public void removeDuplicates(final double shiftTol) {
-        // build/update HOSE code lookup tables, i.e. the one with SSC indices
-        this.buildHOSELookupTables();
-        
-        final HashSet<Long> duplicatesSSCIndices = new HashSet<>();   
-        SSC ssc1, ssc2;
-        Signal signalSSC1, signalSSC2;
-        long sscIndex1, sscIndex2;
-        ConnectionTree connectionTreeSSC1;
-        boolean isDuplicate;
-        for (final String HOSECode : this.getHOSECodeLookupTableSSCIndices().keySet()) {
-            for (int i = 0; i < this.getHOSECodeLookupTableSSCIndices().get(HOSECode).size(); i++) {
-                sscIndex1 = this.getHOSECodeLookupTableSSCIndices().get(HOSECode).get(i);
-                ssc1 = this.getSSC(sscIndex1);
-                connectionTreeSSC1 = ssc1.getConnectionTree(ssc1.getRootAtomIndex());                
-                for (int j = i + 1; j < this.getHOSECodeLookupTableSSCIndices().get(HOSECode).size(); j++) {
-                    sscIndex2 = this.getHOSECodeLookupTableSSCIndices().get(HOSECode).get(j);
-                    ssc2 = this.getSSC(sscIndex2);
-                    isDuplicate = true;
-                    // check for same hydrogen count in last sphere, because there it could be different
-                    for (final int nodeKey : connectionTreeSSC1.getNodeKeysInSphere(connectionTreeSSC1.getMaxSphere())) {
-                        if(connectionTreeSSC1.getNode(nodeKey).isRingClosureNode()){
-                            continue;
-                        }
-                        signalSSC1 = ssc1.getSubspectrum().getSignal(nodeKey);
-                        signalSSC2 = ssc2.getSubspectrum().getSignal(nodeKey);
-                        if((ssc1.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount() != ssc2.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount())
-                                || ((signalSSC1 != null) && (signalSSC2 != null) && (Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol))){
-                            isDuplicate = false;
-                            break;
-                        }
-                    }
-                    if(isDuplicate){
-                        duplicatesSSCIndices.add(sscIndex2);
-                    }
-                }
+    public boolean containsSSC(final SSC ssc) {
+        return this.findSSC(ssc) != null;
+    }
+
+    /**
+     * Returns a SSC with same structural properties which already exists.
+     * This is based on HOSE code comparisons and hydrogen counts in last sphere. </br>
+     * If the attached hydrogens in last sphere differ, then two SSCs are not considered to be the same.
+     *
+     * @param ssc
+     * @return index in this SSC library if there is already a SSC entry, otherwise null
+     *
+     */
+    public Long findSSC(final SSC ssc) {
+        if(!this.HOSECodeLookupTable.containsKey(ssc.getAsHOSECode())){
+            return null;
+        }
+        for (final long sscIndexInLibrary : this.getHOSECodeLookupTable().get(ssc.getAsHOSECode())){
+            if(Arrays.equals(this.getSSC(sscIndexInLibrary).getAttachedHydrogensInOuterSphere(), ssc.getAttachedHydrogensInOuterSphere())){
+                return sscIndexInLibrary;
             }
         }
-        // remove all duplicates
-        for (final long duplicatesSSCIndex : duplicatesSSCIndices) {            
-            this.remove(duplicatesSSCIndex);
-        }
-        // update lookup tables
-        this.buildHOSELookupTables();
+
+        return null;
     }
+
+
+
+//    /**
+//     * Removes all duplicated SSCs based on HOSE code comparisons.
+//     * If the multiplicities in last sphere differ or shift deviations are higher than a given tolerance value,
+//     * then two SSCs are not considered to be the same.
+//     *
+//     * @param shiftTol shift tolerance value [ppm] in which chemical shifts are considered as the same
+//     *
+//     */
+//    public void removeDuplicates(final double shiftTol) {
+//        // build/update HOSE code lookup tables, i.e. the one with SSC indices
+//        this.buildHOSELookupTables();
+//
+//        final HashSet<Long> duplicatesSSCIndices = new HashSet<>();
+//        SSC ssc1, ssc2;
+//        Signal signalSSC1, signalSSC2;
+//        long sscIndex1, sscIndex2;
+//        ConnectionTree connectionTreeSSC1;
+//        boolean isDuplicate;
+//        for (final String HOSECode : this.getHOSECodeLookupTable().keySet()) {
+//            for (int i = 0; i < this.getHOSECodeLookupTable().get(HOSECode).size(); i++) {
+//                sscIndex1 = this.getHOSECodeLookupTable().get(HOSECode).get(i);
+//                ssc1 = this.getSSC(sscIndex1);
+//                connectionTreeSSC1 = ssc1.getConnectionTree(ssc1.getRootAtomIndex());
+//                for (int j = i + 1; j < this.getHOSECodeLookupTable().get(HOSECode).size(); j++) {
+//                    sscIndex2 = this.getHOSECodeLookupTable().get(HOSECode).get(j);
+//                    ssc2 = this.getSSC(sscIndex2);
+//                    isDuplicate = true;
+//                    // check for same hydrogen count in last sphere, because there it could be different
+//                    for (final int nodeKey : connectionTreeSSC1.getNodeKeysInSphere(connectionTreeSSC1.getMaxSphere())) {
+//                        if(connectionTreeSSC1.getNode(nodeKey).isRingClosureNode()){
+//                            continue;
+//                        }
+//                        signalSSC1 = ssc1.getSubspectrum().getSignal(nodeKey);
+//                        signalSSC2 = ssc2.getSubspectrum().getSignal(nodeKey);
+//                        if((ssc1.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount() != ssc2.getSubstructure().getAtom(nodeKey).getImplicitHydrogenCount())
+//                                || ((signalSSC1 != null) && (signalSSC2 != null) && (Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol))){
+//                            isDuplicate = false;
+//                            break;
+//                        }
+//                    }
+//                    if(isDuplicate){
+//                        duplicatesSSCIndices.add(sscIndex2);
+//                    }
+//                }
+//            }
+//        }
+//        // remove all duplicates
+//        for (final long duplicatesSSCIndex : duplicatesSSCIndices) {
+//            this.remove(duplicatesSSCIndex);
+//        }
+//        // update lookup tables
+//        this.buildHOSELookupTables();
+//    }
     
     public boolean isEmpty(){
         return this.getSSCCount() == 0;
@@ -729,22 +736,50 @@ public final class SSCLibrary {
      */
     public Collection<SSC> getSSCs(){
         return this.map.values();
-    } 
+    }
     
     /**
      * Inserts a new SSC to this SSC library.
      *
      * @param ssc SSC to add to this library
-     * @return false if this SSC library already contains {@code ssc.getIndex()} 
-     * or {@code ssc.getIndex() < 0}; otherwise true
+     * @return
+     * 
+     * @see #containsSSC(SSC)
      */
     public boolean insert(final SSC ssc) {
-        if(this.containsSSC(ssc.getIndex()) || ssc.getIndex() < 0){
+        if(ssc == null){
             return false;
         }
-        this.map.put(ssc.getIndex(), ssc);        
+        final String HOSECode = ssc.getAsHOSECode();
+        final Long sscIndexInLibrary = this.findSSC(ssc);
+        if(sscIndexInLibrary != null){
+            this.getSSC(sscIndexInLibrary).addShiftsFromSubspectrum(ssc.getSubspectrum());
+
+            return true;
+        }
+        if (!this.HOSECodeLookupTable.containsKey(HOSECode)) {
+            this.HOSECodeLookupTable.put(HOSECode, new ArrayList<>());
+        }
+        final SSC sscClone;
+        try {
+            sscClone = ssc.getClone();
+        } catch (Exception e) {
+            return false;
+        }
+        sscClone.setIndex(this.getSSCCount());
+        this.HOSECodeLookupTable.get(HOSECode).add(sscClone.getIndex());
+        this.map.put(sscClone.getIndex(), sscClone);
         
         return true;
+    }
+
+    /**
+     * Removes shifts for each signal of a SSC subspectrum which are considered as outlier ({@link SSC#removeSignalShiftsOutlier()}).
+     */
+    public void removeSignalShiftsOutlier(){
+        for (final SSC ssc : this.getSSCs()){
+            ssc.removeSignalShiftsOutlier();
+        }
     }
     
     public boolean remove(final long sscIndex){
@@ -776,6 +811,7 @@ public final class SSCLibrary {
     } 
     
     public void removeAll(){
+        this.HOSECodeLookupTable.clear();
         this.map.clear();
     }    
 
