@@ -39,7 +39,9 @@ public class SSCConverter {
                 sscDocument.getInteger("maxSphere"),
 //                GSON.fromJson(((Document) sscDocument.get("HOSECodes")).toJson(), HashMap.class),
 //                GSON.fromJson(((Document) sscDocument.get("connectionTrees")).toJson(), HashMap.class),
+//                GSON.fromJson(((Document) sscDocument.get("attachedHydrogensInOuterSphere")).toJson(), ArrayList.class),
                 GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(), HashMap.class),
+                GSON.fromJson(((Document) sscDocument.get("shiftsRanges")).toJson(), HashMap.class),
                 GSON.fromJson(((Document) sscDocument.get("unsaturatedAtomIndices")).toJson(), ArrayList.class),
                 GSON.fromJson(((Document) sscDocument.get("multiplicitySections")).toJson(), HashMap.class)
                 );
@@ -60,9 +62,10 @@ public class SSCConverter {
 //        document.append("HOSECodes", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getHOSECodes(), HashMap.class))));
 //        document.append("connectionTrees", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getConnectionTrees(), HashMap.class))));
         document.append("shifts", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShifts(), HashMap.class))));
+        document.append("shiftsRanges", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShiftsRanges(), HashMap.class))));
         document.append("unsaturatedAtomIndices", ssc.getUnsaturatedAtomIndices());
         document.append("multiplicitySections", ssc.getMultiplicitySections());
-        
+
         return document;
     }
 
@@ -76,7 +79,9 @@ public class SSCConverter {
                 jsonObject.get("maxSphere").getAsInt(),
 //                GSON.fromJson(jsonObject.get("HOSECodes"), HashMap.class),
 //                GSON.fromJson(jsonObject.get("connectionTrees"), HashMap.class),
+//                GSON.fromJson(jsonObject.get("attachedHydrogensInOuterSphere"), ArrayList.class),
                 GSON.fromJson(jsonObject.get("shifts"), HashMap.class),
+                GSON.fromJson(jsonObject.get("shiftsRanges"), HashMap.class),
                 GSON.fromJson(jsonObject.get("unsaturatedAtomIndices"), ArrayList.class),
                 GSON.fromJson(jsonObject.get("multiplicitySections"), HashMap.class)
 
