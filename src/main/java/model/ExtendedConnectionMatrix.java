@@ -15,6 +15,7 @@ import casekit.NMR.Utils;
 import org.openscience.cdk.graph.matrix.ConnectionMatrix;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import org.openscience.cdk.interfaces.IAtomType.Hybridization;
 import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.silent.Atom;
 import org.openscience.cdk.silent.Bond;
@@ -26,21 +27,24 @@ import org.openscience.cdk.silent.SilentChemObjectBuilder;
  */
 public class ExtendedConnectionMatrix {
     
-    final double[][] connectionMatrix;
-    final String[] atomTypes;
-    final Integer[] hydrogenCounts, valencies;
-    final Double[] charges;
-    final boolean[] isInRingAtoms, isAromaticAtoms, isInRingBonds, isAromaticBonds;
-    final Integer[][] bondIDs;
+    private final double[][] connectionMatrix;
+    private final String[] atomTypes;
+    private final Integer[] hydrogenCounts, valencies, formalCharges;
+    private final Hybridization[] hybridizations;
+    private final Double[] charges;
+    private final boolean[] isInRingAtoms, isAromaticAtoms, isInRingBonds, isAromaticBonds;
+    private final Integer[][] bondIDs;
     
     public ExtendedConnectionMatrix(final IAtomContainer ac){
         this.connectionMatrix = ConnectionMatrix.getMatrix(ac);
         this.atomTypes = new String[ac.getAtomCount()];
         this.hydrogenCounts = new Integer[ac.getAtomCount()];
+        this.hybridizations = new Hybridization[ac.getAtomCount()];
         this.isInRingAtoms = new boolean[ac.getAtomCount()];
         this.isAromaticAtoms = new boolean[ac.getAtomCount()];
         this.valencies = new Integer[ac.getAtomCount()];
         this.charges = new Double[ac.getAtomCount()];
+        this.formalCharges = new Integer[ac.getAtomCount()];
         this.bondIDs = new Integer[ac.getBondCount()][2];        
         this.isInRingBonds = new boolean[ac.getBondCount()];
         this.isAromaticBonds = new boolean[ac.getBondCount()];
@@ -54,10 +58,12 @@ public class ExtendedConnectionMatrix {
         for (final IAtom atom : structure.atoms()) {
             this.atomTypes[atom.getIndex()] = atom.getSymbol();
             this.hydrogenCounts[atom.getIndex()] = atom.getImplicitHydrogenCount();
+            this.hybridizations[atom.getIndex()] = atom.getHybridization();
             this.isInRingAtoms[atom.getIndex()] = atom.isInRing();
             this.isAromaticAtoms[atom.getIndex()] = atom.isAromatic();
             this.valencies[atom.getIndex()] = atom.getValency();
             this.charges[atom.getIndex()] = atom.getCharge();
+            this.formalCharges[atom.getIndex()] = atom.getFormalCharge();
         }
     }
     
@@ -76,10 +82,12 @@ public class ExtendedConnectionMatrix {
         for (int i = 0; i < this.connectionMatrix.length; i++) {
             atom = new Atom(this.atomTypes[i]);
             atom.setImplicitHydrogenCount(this.hydrogenCounts[i]);
+            atom.setHybridization(this.hybridizations[i]);
             atom.setIsInRing(this.isInRingAtoms[i]);
             atom.setIsAromatic(this.isAromaticAtoms[i]);
             atom.setValency(this.valencies[i]);
             atom.setCharge(this.charges[i]);
+            atom.setFormalCharge(this.formalCharges[i]);
             
             substructure.addAtom(atom);
         }
