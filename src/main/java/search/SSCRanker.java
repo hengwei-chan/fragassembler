@@ -270,10 +270,15 @@ public final class SSCRanker {
                     return matchFactorComp;
                 }
             }
-            // ranking by total subtructure size
-            return -1 * Integer.compare(
+            // ranking by total substructure size
+            final int substructureSizeComp = -1 * Integer.compare(
                     sscLibrary.getSSC(indexSSC1).getAtomCount(),
                     sscLibrary.getSSC(indexSSC2).getAtomCount());
+            if(substructureSizeComp != 0){
+                return substructureSizeComp;
+            }
+
+            return 0;
         });
     }
 
@@ -286,5 +291,5 @@ public final class SSCRanker {
             this.rankedSSCLibrary.insert(rankedSSC);
         }
     }
-    
+
 }
