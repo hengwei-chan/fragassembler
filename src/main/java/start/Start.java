@@ -207,7 +207,7 @@ public class Start {
                 .required(false)
                 .hasArg()
                 .longOpt("nstarts")
-                .desc("Specified number of ranked SSCs to use for assembly process. The default is set to use all matched SSC given a query spectrum.")
+                .desc("Specified number of ranked SSC to use for assembly process. The default is set to use all matched SSC given a query spectrum.")
                 .build();
         options.addOption(nstartsOption);
         Option buildFromNMRShiftDBOption = Option.builder("build")
@@ -225,7 +225,7 @@ public class Start {
                 .required(false)
                 .hasArg()
                 .desc("Maximum sphere limit for SSC creation. Minimum value is 1."
-                        + "\nIf the \"build\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached.")
+                        + "\nIf the \"build\" option is selected: SSC with spherical limit (>= 2) will be created until \"maxsphere\" is reached.")
                 .build();
         options.addOption(maxsphereOption);
         Option mongoUserOption = Option.builder("u")
