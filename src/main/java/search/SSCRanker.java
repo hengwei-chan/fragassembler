@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
@@ -35,7 +36,7 @@ public final class SSCRanker {
 
     private final SSCLibrary sscLibrary;
     private int nThreads;
-    private final HashMap<Long, Object[]> hits;
+    private final ConcurrentHashMap<Long, Object[]> hits;
     private final ArrayList<Long> rankedSSCIndices;
     private final SSCLibrary rankedSSCLibrary;
     private final static int NO_OF_CALCULATIONS = 3, ASSIGNMENT_IDX = 0, MATCHFACTOR_IDX = 1, TANIMOTO_COEFFICIENT_IDX = 2;
@@ -60,7 +61,7 @@ public final class SSCRanker {
     public SSCRanker(final SSCLibrary sscLibrary, final int nThreads){
         this.sscLibrary = sscLibrary;
         this.setNThreads(nThreads);
-        this.hits = new HashMap<>();
+        this.hits = new ConcurrentHashMap<>();
         this.rankedSSCIndices = new ArrayList<>();
         this.rankedSSCLibrary = new SSCLibrary(this.nThreads);
     }     
@@ -191,6 +192,7 @@ public final class SSCRanker {
 
     private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException{
         this.hits.clear();
+
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<HashMap<Long, Object[]>>> callables = new ArrayList<>();
@@ -226,7 +228,7 @@ public final class SSCRanker {
                     }
                 })
                 .forEach(tempHashMap -> {
-                    if ((tempHashMap != null) && !tempHashMap.values().contains(null)) {
+                    if ((tempHashMap != null) && !tempHashMap.containsValue(null)) {
                         this.hits.putAll(tempHashMap);
                     }
                 });
