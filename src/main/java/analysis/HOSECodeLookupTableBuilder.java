@@ -18,7 +18,6 @@ import model.SSCLibrary;
 import org.apache.commons.cli.*;
 import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
-import start.Start;
 
 import java.io.FileNotFoundException;
 import java.util.logging.Level;
@@ -28,30 +27,27 @@ import java.util.logging.Logger;
  * Class to build a HOSE code lookup table and to store it into MongoDB collection.
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
+ *
+ * @deprecated
  */
 public class HOSECodeLookupTableBuilder {
        
     public static boolean buildHOSECodeShiftsLookupTable(final String pathToNMRShiftDB, final String NMRShiftDBSpectrumProperty, final int maxSphere, final int nThreads, 
-            final String mongoUser, final String mongoPassword, final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection, final boolean removeDuplicates){
+            final String mongoUser, final String mongoPassword, final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection){
         
         try {            
             final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
-            long offset = 0;
             for (int m = 0; m <= maxSphere; m++) {
                 System.out.println("Build fragments for maxsphere: " + m);
-                sscLibrary.extend(pathToNMRShiftDB, NMRShiftDBSpectrumProperty, m, offset);
-                if (removeDuplicates) {
-                    sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
-                }
+                sscLibrary.extend(pathToNMRShiftDB, NMRShiftDBSpectrumProperty, m);
                 System.out.println("done...");
-                offset = sscLibrary.getLastSSCIndex() + 1;
-            }            
+            }
             
             final MongoClient mongo = MongoDB.login(mongoUser, mongoPassword, mongoAuthDB);
             final MongoCollection<Document> collection = MongoDB.getCollection(mongo, mongoDBName, mongoDBCollection);
             collection.drop();
             System.out.println("Build and export lookup table...");
-            sscLibrary.exportHOSECodeLookupTable(collection);
+//            sscLibrary.exportHOSECodeLookupTable(collection);
             System.out.println("done...");
 
             MongoDB.logout(mongo);
@@ -129,12 +125,6 @@ public class HOSECodeLookupTableBuilder {
                 .desc("Number of threads to use for parallelization. The default is set to 1.")
                 .build();
         options.addOption(nthreadsOption);
-        Option removeDuplicatesOption = Option.builder("nd")
-                .required(false)
-                .longOpt("noduplicates")
-                .desc("If given, the SSC library to build/extend will contain no structural duplicates.")
-                .build();
-        options.addOption(removeDuplicatesOption);
 
         return options;
     }
@@ -155,13 +145,9 @@ public class HOSECodeLookupTableBuilder {
             final String mongoAuthDB = cmd.getOptionValue("a");
             final String mongoDBName = cmd.getOptionValue("db");
             final String mongoDBCollection = cmd.getOptionValue("c");
-            final int nThreads = Integer.parseInt(cmd.getOptionValue("nt", "1"));    
-            boolean removeDuplicates = false;
-            if(cmd.hasOption("noduplicates")){
-                removeDuplicates = true;
-            }
+            final int nThreads = Integer.parseInt(cmd.getOptionValue("nt", "1"));
             
-            HOSECodeLookupTableBuilder.buildHOSECodeShiftsLookupTable(pathToNMRShiftDB, NMRShiftDBSpectrumProperty, maxSphere, nThreads, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, removeDuplicates);
+            HOSECodeLookupTableBuilder.buildHOSECodeShiftsLookupTable(pathToNMRShiftDB, NMRShiftDBSpectrumProperty, maxSphere, nThreads, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection);
             
         } catch (org.apache.commons.cli.ParseException e) {
             // TODO Auto-generated catch block
