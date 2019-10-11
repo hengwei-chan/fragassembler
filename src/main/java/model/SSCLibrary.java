@@ -11,7 +11,6 @@
  */
 package model;
 
-import casekit.NMR.Utils;
 import casekit.NMR.dbservice.NMRShiftDB;
 import com.google.gson.JsonParser;
 import com.mongodb.client.MongoCollection;
@@ -22,7 +21,9 @@ import start.TimeMeasurement;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -59,7 +60,7 @@ public final class SSCLibrary {
 
     
     /**
-     * Returns a HashMap of the SSC indices for each HOSE code of that SSC 
+     * Returns a HashMap of the SSC indices for each HOSE code of that SSC
      * library.
      *
      * @return HashMap with HOSE codes as keys and lists of SSC indices as
@@ -120,7 +121,7 @@ public final class SSCLibrary {
     }
     
     /**
-     * Imports a SSC library from a JSON file. All current SSCs will be 
+     * Imports a SSC library from a JSON file. All current SSC will be
      * deleted.
      *
      * @param pathToJSON JSON file containing ths SSC library
@@ -149,7 +150,7 @@ public final class SSCLibrary {
     /**
      * Creates a SSC library from a given NMRShiftDB SDF via fragmentation of
      * each structure and each of its atoms as individual starting point 
-     * (central atom). All current SSCs will be deleted.
+     * (central atom). All current SSC will be deleted.
      * Signals shifts outlier in each SSC will be removed, see {@link SSC#removeSignalShiftsOutlier()}.
      *
      * @param pathToNMRShiftDB path to NMRShiftDB SDF
@@ -171,16 +172,16 @@ public final class SSCLibrary {
 
         final TimeMeasurement tm = new TimeMeasurement();
         for (int m = 2; m <= maxSphere; m++) {
-            System.out.println("Building SSCs for " + m + "-spheres...");
+            System.out.println("Building SSC for " + m + "-spheres...");
             tm.start();
             this.extend(Fragmentation.buildSSCLibrary(NMRShiftDB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), m, this.nThreads));
-            System.out.println("SSCs for " + m + "-spheres build!!!");
+            System.out.println("SSC for " + m + "-spheres build!!!");
             tm.stop();
             System.out.println("--> time needed: " + tm.getResult() + " s");
-            System.out.println("-> #SSCs in SSC library: " + this.getSSCCount());
+            System.out.println("-> #SSC in SSC library: " + this.getSSCCount());
         }
 
-        System.out.println("Building SSCs done!!!");
+        System.out.println("Building SSC done!!!");
         System.out.println("Removing signal shifts oulier");
         tm.start();
         this.removeSignalShiftsOutlier();
@@ -189,9 +190,9 @@ public final class SSCLibrary {
     }
     
     /**
-     * Extends this SSC library by all SSCs from given second one.
+     * Extends this SSC library by all SSC from given second one.
      *
-     * @param sscLibrary SSC library with SSCs to add to this library
+     * @param sscLibrary SSC library with SSC to add to this library
      *
      */
     public void extend(final SSCLibrary sscLibrary) {
@@ -213,9 +214,9 @@ public final class SSCLibrary {
     }
     
     /**
-     * Extends this SSC library by SSCs stored in a JSON file.
+     * Extends this SSC library by SSC stored in a JSON file.
      *
-     * @param pathToJSON path to JSON file containing SSCs
+     * @param pathToJSON path to JSON file containing SSC
      * library
      *
      * @throws java.io.FileNotFoundException
@@ -224,8 +225,7 @@ public final class SSCLibrary {
         final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
         final JsonParser jsonParser = new JsonParser();
-        // initialize an executor
-        final ExecutorService executor = Utils.initExecuter(nThreads);
+
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
         br.lines().forEach( line -> {
@@ -243,27 +243,14 @@ public final class SSCLibrary {
                 }
             }
         });
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach(convertedSSCs::add);
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
-
+        SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
         this.extend(convertedSSCs);
     }
 
     /**
      * Checks whether a SSC with same structural properties already exists.
      * This is based on HOSE code comparisons and hydrogen counts in last sphere. </br>
-     * If the attached hydrogens in last sphere differ, then two SSCs are not considered to be the same.
+     * If the attached hydrogens in last sphere differ, then two SSC are not considered to be the same.
      *
      * @param ssc
      * @return true if there already exists a SSC with same structural properties
@@ -276,7 +263,7 @@ public final class SSCLibrary {
     /**
      * Returns a SSC with same structural properties which already exists.
      * This is based on HOSE code comparisons and hydrogen counts in last sphere. </br>
-     * If the attached hydrogens in last sphere differ, then two SSCs are not considered to be the same.
+     * If the attached hydrogens in last sphere differ, then two SSC are not considered to be the same.
      *
      * @param ssc
      * @return index in this SSC library if there is already a SSC entry, otherwise null
@@ -300,7 +287,7 @@ public final class SSCLibrary {
     }
     
     /**
-     * Returns the last (numerical highest) SSC index of this SSC library. 
+     * Returns the last (numerical highest) SSC index of this SSC library.
      * If this SSC library is empty then null will be returned.
      *
      * @return
@@ -341,7 +328,7 @@ public final class SSCLibrary {
     }
     
     /**
-     * Returns the SSCs of this SSC library in same order as the SSCs 
+     * Returns the SSC of this SSC library in same order as the SSC
      * were inserted.
      *
      * @return
@@ -409,7 +396,7 @@ public final class SSCLibrary {
     }
 
     /**
-     * Returns a deep clone if this SSC library and its SSCs object. The number of threads is
+     * Returns a deep clone if this SSC library and its SSC object. The number of threads is
      * set too the number of threads of this class object.
      *
      * @return
@@ -431,6 +418,10 @@ public final class SSCLibrary {
 
 
 
+
+
+
+
     /**
      * Writes this SSC library into a MongoDB collection.
      *
@@ -440,43 +431,23 @@ public final class SSCLibrary {
      */
     public void exportToMongoDB(final MongoCollection<Document> collection) throws InterruptedException{
 
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+        final ConcurrentLinkedQueue<Document> convertedDocuments = new ConcurrentLinkedQueue<>();
         final ArrayList<Callable<Document>> callables = new ArrayList<>();
         // add all task to do
         long sscCounter = 0;
         for (final SSC ssc : this.getSSCs()) {
             final long sscCounterCopy = sscCounter;
-            callables.add(() -> {
-                return SSCConverter.SSCToDocument(ssc, sscCounterCopy);
-            });
+            callables.add(() -> SSCConverter.SSCToDocument(ssc, sscCounterCopy));
             sscCounter++;
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((document) -> {
-                    try {
-                        collection.insertOne(document);
-                    } catch (Exception e) {
-                        System.err.println("export for key \"" + document.get("_id") + "\" failed: " + e.getMessage());
-                        System.out.println("-> document: \n" + document.toJson());
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+
+        SSCConverter.convertSSCsToDocuments(callables, convertedDocuments, this.nThreads);
+        collection.insertMany(new ArrayList<>(convertedDocuments));
     }
 
     /**
      * Imports a SSC library by documents from a MongoDB collection
-     * containing the SSC information.  All current SSCs will be
+     * containing the SSC information.  All current SSC will be
      * deleted.
      *
      * @param collection
@@ -493,7 +464,7 @@ public final class SSCLibrary {
 
     /**
      * Imports a SSC library by documents from a MongoDB
-     * containing the SSC information.  All current SSCs will be
+     * containing the SSC information.  All current SSC will be
      * deleted.
      *
      * @param documents
@@ -511,7 +482,7 @@ public final class SSCLibrary {
     /**
      * Extends this SSC library by documents from a MongoDB collection
      * containing the SSC information.
-     * All SSCs in this library object whose indices also exist in the
+     * All SSC in this library object whose indices also exist in the
      * given map will be replaced.
      *
      * @param collection
@@ -521,44 +492,21 @@ public final class SSCLibrary {
      *
      * @deprecated
      */
-    public void extend(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+    public void extend(final MongoCollection<Document> collection) throws InterruptedException  {
+        final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
         for (final Document sscDocument : collection.find()) {
             callables.add(() -> SSCConverter.DocumentToSSC(sscDocument));
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((ssc) -> {
-                    if (ssc != null) {
-                        ssc.setIndex(ssc.getIndex());
-                        if (!this.insert(ssc)) {
-                            try {
-                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-                            } catch (CDKException ex) {
-                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-                            }
-                        }
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+        SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
+        this.extend(convertedSSCs);
     }
 
     /**
      * Extends this SSC library by documents from a MongoDB
      * containing the SSC information.
-     * All SSCs in this library object whose indices also exist in the
+     * All SSC in this library object whose indices also exist in the
      * given map will be replaced.
      *
      * @param documents
@@ -567,37 +515,15 @@ public final class SSCLibrary {
      * @throws java.lang.InterruptedException
      *
      */
-    public void extend(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
+    public void extend(final ArrayList<Document> documents) throws InterruptedException  {
+        final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
         for (final Document sscDocument : documents) {
             callables.add(() -> SSCConverter.DocumentToSSC(sscDocument));
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((ssc) -> {
-                    if (ssc != null) {
-                        if (!this.insert(ssc)) {
-                            try {
-                                throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-                            } catch (CDKException ex) {
-                                Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-                            }
-                        }
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+        SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
+        this.extend(convertedSSCs);
     }
 
     //    /**
@@ -610,20 +536,20 @@ public final class SSCLibrary {
 //     *
 //     * @see #buildHOSELookupTables()
 //     */
-//    public void exportHOSECodeLookupTable(final MongoCollection<Document> collection) throws InterruptedException {
+//    public void exportHOSECodeLookupTable(final MongoCollection<withDocument> collection) throws InterruptedException {
 //
 //        this.buildHOSELookupTables();
 //        // initialize an executor for parallelization
 //        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-//        final ArrayList<Callable<Document>> callables = new ArrayList<>();
+//        final ArrayList<Callable<withDocument>> callables = new ArrayList<>();
 //        // add all task to do
 //        for (final String HOSECode : this.HOSECodeLookupTableShifts.keySet()) {
-//            callables.add((Callable<Document>) () -> {
-//                final Document document = new Document();
+//            callables.add((Callable<withDocument>) () -> {
+//                final withDocument document = new withDocument();
 //                final ArrayList<Double> shifts = this.HOSECodeLookupTableShifts.get(HOSECode);
 //                document.append("HOSECode", HOSECode);
 //                document.append("spheres", hose.Utils.getSpheresCount(HOSECode));
-//                final Document documentShifts = new Document();
+//                final withDocument documentShifts = new withDocument();
 //                documentShifts.append("count", shifts.size());
 //                documentShifts.append("min", (shifts.size() > 0) ? Collections.min(shifts) : null);
 //                documentShifts.append("max", (shifts.size() > 0) ? Collections.max(shifts) : null);
@@ -633,7 +559,7 @@ public final class SSCLibrary {
 //                documentShifts.append("var", Utils.getVariance(shifts));
 //                documentShifts.append("sd", Utils.getStandardDeviation(shifts));
 //                documentShifts.append("shifts", shifts);
-//                final Document documentSSCIndices = new Document();
+//                final withDocument documentSSCIndices = new withDocument();
 //                documentSSCIndices.append("count", this.HOSECodeLookupTable.size());
 //                documentSSCIndices.append("indices", this.HOSECodeLookupTable.get(HOSECode));
 //

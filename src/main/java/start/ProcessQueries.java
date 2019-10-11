@@ -152,7 +152,7 @@ public class ProcessQueries {
         } else {
             nStartSSCs = rankedSSCLibrary.getSSCCount();
         }
-        System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
+        System.out.println("\nnumber of start SSC for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
         final ConcurrentHashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
 
@@ -266,6 +266,6 @@ public class ProcessQueries {
         System.out.println("extension done!!!");
         this.tm.stop();
         System.out.println("--> time needed: " + this.tm.getResult() + " s");
-        System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
+        System.out.println("-> #SSC in SSC library: " + this.sscLibrary.getSSCCount());
     }
 }

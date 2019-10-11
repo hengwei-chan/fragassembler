@@ -27,6 +27,7 @@ import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IBond;
 import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesGenerator;
+import parallel.ParallelTasks;
 import start.Start;
 
 import java.io.BufferedWriter;
@@ -35,8 +36,6 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 
 /**
  *
@@ -149,8 +148,6 @@ public class Assembly {
 
 
         final ConcurrentHashMap<String, SSC> solutions = new ConcurrentHashMap<>();
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(nThreads);
         final ArrayList<Callable<HashMap<String, SSC>>> callables = new ArrayList<>();
         // add all task to do
         for (int i = 0; i < nStarts; i++) {
@@ -161,21 +158,8 @@ public class Assembly {
 //                return Assembly.assembleSeq(rankedSSCLibrary, j, minMatchingSphereCount, querySpectrum, thrsMatchFactor, shiftTol);
             });
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach(tempHashMap -> {
-                    solutions.putAll(tempHashMap);
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+
+        ParallelTasks.processTasks(callables, tempHashMap -> solutions.putAll(tempHashMap), nThreads);
         
         return solutions;
     }

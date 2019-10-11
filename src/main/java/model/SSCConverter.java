@@ -18,9 +18,13 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.bson.Document;
+import parallel.ParallelTasks;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 /**
  *
@@ -37,9 +41,9 @@ public class SSCConverter {
                 GSON.fromJson(((Document) sscDocument.get("substructure")).toJson(), ExtendedConnectionMatrix.class).toAtomContainer(),
                 sscDocument.getInteger("rootAtomIndex"),
                 sscDocument.getInteger("maxSphere"),
-//                GSON.fromJson(((Document) sscDocument.get("HOSECodes")).toJson(), HashMap.class),
-//                GSON.fromJson(((Document) sscDocument.get("connectionTrees")).toJson(), HashMap.class),
-//                GSON.fromJson(((Document) sscDocument.get("attachedHydrogensInOuterSphere")).toJson(), ArrayList.class),
+//                GSON.fromJson(((withDocument) sscDocument.get("HOSECodes")).toJson(), HashMap.class),
+//                GSON.fromJson(((withDocument) sscDocument.get("connectionTrees")).toJson(), HashMap.class),
+//                GSON.fromJson(((withDocument) sscDocument.get("attachedHydrogensInOuterSphere")).toJson(), ArrayList.class),
                 GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(), HashMap.class),
                 GSON.fromJson(((Document) sscDocument.get("shiftsRanges")).toJson(), HashMap.class),
                 sscDocument.get("unsaturatedAtomIndices", ArrayList.class),
@@ -59,8 +63,8 @@ public class SSCConverter {
         document.append("maxSphere", ssc.getMaxSphere());
         document.append("rootAtomIndex", ssc.getRootAtomIndex());
         document.append("index", sscIndex);
-//        document.append("HOSECodes", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getHOSECodes(), HashMap.class))));
-//        document.append("connectionTrees", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getConnectionTrees(), HashMap.class))));
+//        document.append("HOSECodes", withDocument.parse(GSON.toJson(GSON.toJsonTree(ssc.getHOSECodes(), HashMap.class))));
+//        document.append("connectionTrees", withDocument.parse(GSON.toJson(GSON.toJsonTree(ssc.getConnectionTrees(), HashMap.class))));
         document.append("shifts", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShifts(), HashMap.class))));
         document.append("shiftsRanges", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShiftsRanges(), HashMap.class))));
         document.append("unsaturatedAtomIndices", ssc.getUnsaturatedAtomIndices());
@@ -94,4 +98,35 @@ public class SSCConverter {
     public static String SSCToJSON(final SSC ssc, final Long sscIndex){
         return new Document().append(String.valueOf(sscIndex), SSCConverter.SSCToDocument(ssc, sscIndex)).toJson();
     }
+
+    /**
+     * Converts documents to SSC in parallel and adds them to the given collection.
+     * 
+     * @param callables 
+     * @param collection
+     * @param nThreads
+     * @throws InterruptedException
+     * 
+     * @see ParallelTasks#processTasks(ArrayList, Consumer, int)
+     * @see Collection#add(Object)
+     */
+    public static void convertDocumentsToSSCs(final ArrayList<Callable<SSC>> callables, final Collection<SSC> collection, final int nThreads) throws InterruptedException {
+        ParallelTasks.processTasks(callables, collection::add, nThreads);
+    }
+
+    /**
+     * Converts SSC to documents in parallel and adds them to the given collection.
+     *
+     * @param callables
+     * @param collection
+     * @param nThreads
+     * @throws InterruptedException
+     *
+     * @see ParallelTasks#processTasks(ArrayList, Consumer, int)
+     * @see Collection#add(Object)
+     */
+    public static void convertSSCsToDocuments(final ArrayList<Callable<Document>> callables, final Collection<Document> collection, final int nThreads) throws InterruptedException {
+        ParallelTasks.processTasks(callables, collection::add, nThreads);
+    }
+
 }

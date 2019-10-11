@@ -17,6 +17,7 @@ import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
 import model.SSC;
 import model.SSCLibrary;
+import parallel.ParallelTasks;
 import start.Start;
 
 import java.util.ArrayList;
@@ -24,8 +25,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 
 /**
  * Class to search for matches between a SSC library and query spectra.
@@ -56,7 +55,7 @@ public final class SSCRanker {
      *
      * @param sscLibrary HashMap object consisting of SSC and their indices.
      * @param nThreads number of threads to use for matching and ranking of 
-     * SSCs
+     * SSC
      */
     public SSCRanker(final SSCLibrary sscLibrary, final int nThreads){
         this.sscLibrary = sscLibrary;
@@ -67,7 +66,7 @@ public final class SSCRanker {
     }     
     
     /**
-     * Returns the used input SSC library which is used for finding hits 
+     * Returns the used input SSC library which is used for finding hits
      * for query spectra.
      *
      * @return
@@ -113,7 +112,7 @@ public final class SSCRanker {
     }
 
     /**
-     * Returns the match factors of SSCs in this SSC library in ranked order.
+     * Returns the match factors of SSC in this SSC library in ranked order.
      * To create/update these match factors use the findHits function.
      *
      * @return
@@ -130,7 +129,7 @@ public final class SSCRanker {
     }
 
     /**
-     * Returns the tanimoto coefficients of SSCs in this SSC library in ranked order.
+     * Returns the tanimoto coefficients of SSC in this SSC library in ranked order.
      * To create/update these coefficients use the findHits function.
      *
      * @return
@@ -147,7 +146,7 @@ public final class SSCRanker {
     }
     
     /**
-     * Returns a SSC library containing clones of the current matching SSCs
+     * Returns a SSC library containing clones of the current matching SSC
      * for a query spectrum in ranked order.
      * The SSC indices are set in new order starting at 0, 1, 2 etc. .
      * To create/update such ranked SSC library use the findHits function.
@@ -165,7 +164,7 @@ public final class SSCRanker {
     }
                     
     /**
-     * Searches for hits between the SSCs in the class SSC library and
+     * Searches for hits between the SSC in the class SSC library and
      * the query spectrum within a certain shift tolerance window. <br>
      * 1. the number of set assignments (matched signals) (highest) <br>
      * 2. the Tanimoto coefficient regarding the query spectrum (highest) <br>
@@ -193,8 +192,6 @@ public final class SSCRanker {
     private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException{
         this.hits.clear();
 
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
         final ArrayList<Callable<HashMap<Long, Object[]>>> callables = new ArrayList<>();
         // add all task to do
         for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
@@ -217,27 +214,16 @@ public final class SSCRanker {
                 return tempHashMap;
             });
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach(tempHashMap -> {
-                    if ((tempHashMap != null) && !tempHashMap.containsValue(null)) {
-                        this.hits.putAll(tempHashMap);
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+
+        ParallelTasks.processTasks(callables, tempHashMap -> {
+            if ((tempHashMap != null) && !tempHashMap.containsValue(null)) {
+                this.hits.putAll(tempHashMap);
+            }
+        }, this.nThreads);
     }
 
     /**
-     * Ranks the matched hits (SSCs indices) pairwise according to the following: <br>
+     * Ranks the matched hits (SSC indices) pairwise according to the following: <br>
      * 1. the number of set assignments (matched signals) (highest) <br>
      * 2. the Tanimoto coefficient regarding the query spectrum (highest) <br>
      * 3. the match factor regarding the query spectrum (lowest) <br>
@@ -245,7 +231,7 @@ public final class SSCRanker {
      */
     private void rank(){
         this.rankedSSCIndices.clear();
-        // use indices of SSCs of the input SSC library which are valid hits (not null)
+        // use indices of SSC of the input SSC library which are valid hits (not null)
         this.rankedSSCIndices.addAll(this.hits.keySet());
 
         this.rankedSSCIndices.sort((indexSSC1, indexSSC2) -> {

@@ -21,20 +21,19 @@ import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
+import parallel.ParallelTasks;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 
 
 public class Fragmentation {
     
     /**
-     * Builds a set of substructure-subspectrum-correlations (SSC objects) from  
+     * Builds a set of substructure-subspectrum-correlations (SSC objects) from
      * an atom container set for all its molecules and atoms by using a 
      * breadth first search with spherical limit.
      *
@@ -51,38 +50,22 @@ public class Fragmentation {
      */
     public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads) throws InterruptedException {
 
-        final ConcurrentLinkedQueue<SSC> buildsSSCs = new ConcurrentLinkedQueue<>();
-        // initialize an executor
-        final ExecutorService executor = Utils.initExecuter(nThreads);
+        final ConcurrentLinkedQueue<SSC> buildSSCs = new ConcurrentLinkedQueue<>();
         final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
         // add all task to do
         for (final int index: SSCComponentsSet.keySet()) {
             callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((sscLibraryTemp) -> {
-                    buildsSSCs.addAll(sscLibraryTemp.getSSCs());
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+        ParallelTasks.processTasks(callables, sscLibraryTemp -> buildSSCs.addAll(sscLibraryTemp.getSSCs()), nThreads);
 
         final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
-        sscLibrary.extend(buildsSSCs);
+        sscLibrary.extend(buildSSCs);
 
         return sscLibrary;
     }
     
     /**
-     * Builds a set of substructure-subspectrum-correlations (SSC objects) from one 
+     * Builds a set of substructure-subspectrum-correlations (SSC objects) from one
      * structure for all its atoms by using a breadth first search 
      * with spherical limit. 
      *
