@@ -65,7 +65,7 @@ The following are the arguments with which you can start FragAssembler (an examp
            <arg> -q <arg> -tol <arg> -mft <arg> [-min <arg>] [-o <arg>] [-nt
            <arg>] [-ns <arg>] [-import] [-extend] [-nmrshiftdb <arg>]
            [-maxsphere <arg>] [-u <arg>] [-p <arg>] [-a <arg>] [-db <arg>] [-c
-           <arg>] [-nd] [-j <arg>]
+           <arg>] [-j <arg>]
     
      -f,--format <arg>          Format to use:
                                 case 1: "j" for JSON. The parameter "j" has to
@@ -113,10 +113,6 @@ The following are the arguments with which you can start FragAssembler (an examp
                                 MongoDB.
      -c,--collection <arg>      Collection name to fetch from selected
                                 database in MongoDB.
-     -nd,--noduplicates         If given, the SSC library to build/extend will
-                                contain no structural duplicates with similar
-                                chemical shifts (deviations smaller than 5.0
-                                ppm).
      -j,--json <arg>            Path to SSC library in JSON format.
      
 ### Example
