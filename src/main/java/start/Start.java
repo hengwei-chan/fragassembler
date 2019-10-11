@@ -26,7 +26,7 @@ public class Start {
     
     private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueriesFile, pathToOutputsFolder, pathToJSON, format;
     private int nThreads, nStarts, maxSphere, minMatchingSphere;
-    private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON;
+    private boolean buildFromNMRShiftDB, useMongoDB, useJSON;
     private double shiftTol, matchFactorThrs;
     public static double EQUIV_SIGNAL_THRS = 0.5;
     public static int DECIMAL_PLACES = 2;
@@ -36,13 +36,12 @@ public class Start {
     
     public void start() throws Exception {
         final SSCLibrary sscLibrary;
+        final Prepare prepare = new Prepare(this.nThreads, this.buildFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
         if (this.useMongoDB) {
-            final PrepareMongoDB prepareMongoDB = new PrepareMongoDB(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-            prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
+            prepare.prepareMongoDB(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
             sscLibrary = new SSCLibrary();
         } else if (this.useJSON) {
-            final PrepareJSONFile prepareJSONFile = new PrepareJSONFile(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-            sscLibrary = prepareJSONFile.prepare(this.pathToJSON);
+            sscLibrary = prepare.prepareJSON(this.pathToJSON);
         } else {
             throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
         }
@@ -102,16 +101,9 @@ public class Start {
                 System.out.println(" --> " + this.pathToJSON);
             }
             
-            if(cmd.hasOption("import") || cmd.hasOption("extend")){
-                if (cmd.hasOption("import")) {
-                    this.importFromNMRShiftDB = true;
-                    this.extendFromNMRShiftDB = false;                    
-                } else {//if (cmd.hasOption("extend")) {
-                    this.importFromNMRShiftDB = false;
-                    this.extendFromNMRShiftDB = true;                    
-                }           
-                System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
-                System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB); 
+            if(cmd.hasOption("build")){
+                this.buildFromNMRShiftDB = true;
+                System.out.println("-buildFromNMRShiftDB: " + this.buildFromNMRShiftDB);
                 if (!cmd.hasOption("nmrshiftdb") || !cmd.hasOption("maxsphere")) {
                     throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": parameter \"nmrshiftdb\" and/or \"maxsphere\" is missing\"");
                 } else {
@@ -124,11 +116,9 @@ public class Start {
                     System.out.println("-maxSphere: " + this.maxSphere);
                 }
             } else {
-                this.importFromNMRShiftDB = false;
-                this.extendFromNMRShiftDB = false;
-                
-                System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
-                System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB); 
+                this.buildFromNMRShiftDB = false;
+
+                System.out.println("-buildFromNMRShiftDB: " + this.buildFromNMRShiftDB);
             }
             
             this.shiftTol = Double.parseDouble(cmd.getOptionValue("tol"));
@@ -220,16 +210,11 @@ public class Start {
                 .desc("Specified number of ranked SSCs to use for assembly process. The default is set to use all matched SSC given a query spectrum.")
                 .build();
         options.addOption(nstartsOption);
-        Option importFromNMRShiftDBOption = Option.builder("import")
+        Option buildFromNMRShiftDBOption = Option.builder("build")
                 .required(false)
                 .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to overwrite all entries within a MongoDB collection or JSON file. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
                 .build();
-        options.addOption(importFromNMRShiftDBOption);
-        Option extendFromNMRShiftDBOption = Option.builder("extend")
-                .required(false)
-                .desc("Indicates that a NMRShiftDB file (SDF) will be used to build a SSC library from that and to extend a MongoDB collection or JSON file. The parameters \"nmrshiftdb\" and \"maxsphere\" must be set too.")
-                .build();
-        options.addOption(extendFromNMRShiftDBOption);
+        options.addOption(buildFromNMRShiftDBOption);
         Option nmrshiftdb = Option.builder("nmrshiftdb")
                 .required(false)
                 .hasArg()
@@ -240,9 +225,7 @@ public class Start {
                 .required(false)
                 .hasArg()
                 .desc("Maximum sphere limit for SSC creation. Minimum value is 1."
-                        + "\nIf the \"import\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached."
-                        + "\nIf the \"extend\" option is selected: only SSCs with exactly spherical limit \"maxsphere\" will be created." 
-                        + "\nIf both parameters are given: the \"import\" will be done.")
+                        + "\nIf the \"build\" option is selected: SSCs with spherical limit (>= 2) will be created until \"maxsphere\" is reached.")
                 .build();
         options.addOption(maxsphereOption);
         Option mongoUserOption = Option.builder("u")
