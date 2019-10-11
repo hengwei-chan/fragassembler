@@ -25,11 +25,6 @@ import org.openscience.cdk.interfaces.IAtomContainer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 
 public class Fragmentation {
@@ -43,68 +38,56 @@ public class Fragmentation {
      * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @param nThreads Number of threads to use for parallelization
-     * @param removeSignalShiftsOulier indicates whether shifts which are considered as outlier should be removed
-     *                                 ({@link SSCLibrary#removeSignalShiftsOutlier()})
-     *
-     * @return
-     * @throws java.lang.InterruptedException
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws CloneNotSupportedException
-     *
-     * @see Fragmentation#buildSSCs(Object[], int, long)
-     */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final boolean removeSignalShiftsOulier) throws InterruptedException, CDKException, CloneNotSupportedException {
-        return Fragmentation.buildSSCLibrary(SSCComponentsSet, maxSphere, nThreads, 0, removeSignalShiftsOulier);
-    }
-    
-    /**
-     * Builds a set of substructure-subspectrum-correlations (SSC objects) from  
-     * an atom container set for all its molecules and atoms by using a 
-     * breadth first search with spherical limit.
-     *
-     * @param SSCComponentsSet
-     * @param maxSphere Spherical limit for building a substructure into 
-     * all directions
-     * @param nThreads Number of threads to use for parallelization
-     * @param offset offset value as starting point for indexing the SSCs
      * @param removeSignalShiftsOulier indicates whether shifts which are considered as outlier should be remove
      *                                 ({@link SSCLibrary#removeSignalShiftsOutlier()})
      *
      * @return
      * @throws java.lang.InterruptedException
-     * @see Fragmentation#buildSSCs(Object[], int, long)
+     * @see Fragmentation#buildSSCs(Object[], int)
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final long offset, final boolean removeSignalShiftsOulier) throws InterruptedException {
-        // initialize an executor
-        final ExecutorService executor = Utils.initExecuter(nThreads);
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final boolean removeSignalShiftsOulier) throws InterruptedException {
+
+//        final SSCLibrary sscLibrary = new SSCLibrary();
+//        // initialize an executor
+//        final ExecutorService executor = Utils.initExecuter(nThreads);
+//        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
+//        // add all task to do
+//        for (final int index: SSCComponentsSet.keySet()) {
+//            callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
+//        }
+//        // execute all task in parallel
+//        executor.invokeAll(callables)
+//                .stream()
+//                .map(future -> {
+//                    try {
+//                        return future.get();
+//                    } catch (InterruptedException | ExecutionException e) {
+//                        throw new IllegalStateException(e);
+//                    }
+//                })
+//                .forEach((sscLibraryTemp) -> {
+//            try {
+//                sscLibrary.extend(sscLibraryTemp);
+//            } catch (InterruptedException ex) {
+//                Logger.getLogger(Fragmentation.class.getName()).log(Level.SEVERE, null, ex);
+//            }
+//                });
+//        // shut down the executor service
+//        Utils.stopExecuter(executor, 5);
+//
+//        if(removeSignalShiftsOulier){
+//            sscLibrary.removeSignalShiftsOutlier();
+//        }
+
+
         final SSCLibrary sscLibrary = new SSCLibrary();
-        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
-        // add all task to do        
-        long offsetSSCIndex = offset;
         for (final int index: SSCComponentsSet.keySet()) {
-            final long offsetSSCIndexFinalCopy = offsetSSCIndex;           
-            callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere, offsetSSCIndexFinalCopy));
-            offsetSSCIndex += ((IAtomContainer) SSCComponentsSet.get(index)[0]).getAtomCount();
-        }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((sscLibraryTemp) -> {
-            try {                    
-                sscLibrary.extend(sscLibraryTemp);
-            } catch (InterruptedException ex) {
-                Logger.getLogger(Fragmentation.class.getName()).log(Level.SEVERE, null, ex);
+            try {
+                sscLibrary.extend(Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
+            } catch (CDKException e) {
+                e.printStackTrace();
             }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
+        }
 
         if(removeSignalShiftsOulier){
             sscLibrary.removeSignalShiftsOutlier();
@@ -122,11 +105,11 @@ public class Fragmentation {
      * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * to be the same type as in used spectrum property.
-     * @param offsetSSCIndex  offset value for indexing each new built SSC
+     *
      * @return
      * @see Fragmentation#buildSSC(IAtomContainer, Spectrum, Assignment, int, int)
      */
-    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxSphere, final long offsetSSCIndex) throws CDKException {
+    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxSphere) throws CDKException {
         final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];
         final Spectrum spectrum = (Spectrum) SSCComponentsSet[1];
         final Assignment assignment = (Assignment) SSCComponentsSet[2];
@@ -151,10 +134,11 @@ public class Fragmentation {
         SSC ssc;
         for (int i = 0; i < structure.getAtomCount(); i++) {      
             ssc = Fragmentation.buildSSC(structure, spectrum, assignment, i, maxSphere);
+            // if one part of the structure could not be built then skip the whole structure
+            // and return an empty SSC library
             if (ssc == null) {
-                return new SSCLibrary();                
+                return new SSCLibrary();
             }
-            ssc.setIndex(offsetSSCIndex + i);
             sscLibrary.insert(ssc);
         }
        
@@ -184,32 +168,20 @@ public class Fragmentation {
         final IAtomContainer substructure = Fragmentation.buildSubstructure(structure, rootAtomIndex, maxSphere);
         final Spectrum subspectrum = new Spectrum(spectrum.getNuclei());
         final Assignment subassignment = new Assignment(subspectrum);
-        IAtom atomInStructure;//, atomInSubstructure;
+        IAtom atomInStructure;
         for (int j = 0; j < substructure.getAtomCount(); j++) {
             atomInStructure = structure.getAtom(substructureAtomIndices.get(j));
-//            atomInSubstructure = substructure.getAtom(j);
-            if(atomInStructure.getSymbol().equals(Utils.getAtomTypeFromSpectrum(subspectrum, 0))){                
+            if(atomInStructure.getSymbol().equals(Utils.getAtomTypeFromSpectrum(subspectrum, 0))){
                 if((assignment.getIndex(0, substructureAtomIndices.get(j)) == null) || (spectrum.getSignal(assignment.getIndex(0, substructureAtomIndices.get(j))) == null)){
                     return null;
                 }
                 subspectrum.addSignal(spectrum.getSignal(assignment.getIndex(0, substructureAtomIndices.get(j))));
                 subassignment.addAssignment(new int[]{j});                
-            }                        
-//            atomInSubstructure.setIsInRing(atomInStructure.isInRing());
-//            atomInSubstructure.setIsAromatic(atomInStructure.isAromatic());
-//            atomInSubstructure.setCharge(atomInStructure.getCharge());
-//            atomInSubstructure.setValency(atomInStructure.getValency());
-//            atomInSubstructure.setImplicitHydrogenCount(atomInStructure.getImplicitHydrogenCount());
-//            atomInSubstructure.setHybridization(atomInStructure.getHybridization());
-//            for (final IAtom connectedAtomInSubstructure : substructure.getConnectedAtomsList(atomInSubstructure)) {
-//                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsInRing(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isInRing());
-//                substructure.getBond(connectedAtomInSubstructure, atomInSubstructure).setIsAromatic(structure.getBond(structure.getAtom(substructureAtomIndices.get(connectedAtomInSubstructure.getIndex())), atomInStructure).isAromatic());
-//            }
+            }
         }
         subspectrum.setSolvent(spectrum.getSolvent());
         subspectrum.setSpectrometerFrequency(spectrum.getSpectrometerFrequency());
         subspectrum.detectEquivalences();
-
         // tries to return a valid SSC with all complete information
         // if something is missing/incomplete then null will be returned 
         try {
