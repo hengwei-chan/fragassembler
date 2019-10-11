@@ -25,6 +25,10 @@ import org.openscience.cdk.interfaces.IAtomContainer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 
 
 public class Fragmentation {
@@ -38,60 +42,41 @@ public class Fragmentation {
      * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @param nThreads Number of threads to use for parallelization
-     * @param removeSignalShiftsOulier indicates whether shifts which are considered as outlier should be remove
-     *                                 ({@link SSCLibrary#removeSignalShiftsOutlier()})
      *
      * @return
+     *
      * @throws java.lang.InterruptedException
+     *
      * @see Fragmentation#buildSSCs(Object[], int)
      */
-    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads, final boolean removeSignalShiftsOulier) throws InterruptedException {
+    public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads) throws InterruptedException {
 
-//        final SSCLibrary sscLibrary = new SSCLibrary();
-//        // initialize an executor
-//        final ExecutorService executor = Utils.initExecuter(nThreads);
-//        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
-//        // add all task to do
-//        for (final int index: SSCComponentsSet.keySet()) {
-//            callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
-//        }
-//        // execute all task in parallel
-//        executor.invokeAll(callables)
-//                .stream()
-//                .map(future -> {
-//                    try {
-//                        return future.get();
-//                    } catch (InterruptedException | ExecutionException e) {
-//                        throw new IllegalStateException(e);
-//                    }
-//                })
-//                .forEach((sscLibraryTemp) -> {
-//            try {
-//                sscLibrary.extend(sscLibraryTemp);
-//            } catch (InterruptedException ex) {
-//                Logger.getLogger(Fragmentation.class.getName()).log(Level.SEVERE, null, ex);
-//            }
-//                });
-//        // shut down the executor service
-//        Utils.stopExecuter(executor, 5);
-//
-//        if(removeSignalShiftsOulier){
-//            sscLibrary.removeSignalShiftsOutlier();
-//        }
-
-
-        final SSCLibrary sscLibrary = new SSCLibrary();
+        final ConcurrentLinkedQueue<SSC> buildsSSCs = new ConcurrentLinkedQueue<>();
+        // initialize an executor
+        final ExecutorService executor = Utils.initExecuter(nThreads);
+        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
+        // add all task to do
         for (final int index: SSCComponentsSet.keySet()) {
-            try {
-                sscLibrary.extend(Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
-            } catch (CDKException e) {
-                e.printStackTrace();
-            }
+            callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
         }
+        // execute all task in parallel
+        executor.invokeAll(callables)
+                .stream()
+                .map(future -> {
+                    try {
+                        return future.get();
+                    } catch (InterruptedException | ExecutionException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .forEach((sscLibraryTemp) -> {
+                    buildsSSCs.addAll(sscLibraryTemp.getSSCs());
+                });
+        // shut down the executor service
+        Utils.stopExecuter(executor, 5);
 
-        if(removeSignalShiftsOulier){
-            sscLibrary.removeSignalShiftsOutlier();
-        }
+        final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
+        sscLibrary.extend(buildsSSCs);
 
         return sscLibrary;
     }
