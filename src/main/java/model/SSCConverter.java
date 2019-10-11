@@ -42,7 +42,7 @@ public class SSCConverter {
 //                GSON.fromJson(((Document) sscDocument.get("attachedHydrogensInOuterSphere")).toJson(), ArrayList.class),
                 GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(), HashMap.class),
                 GSON.fromJson(((Document) sscDocument.get("shiftsRanges")).toJson(), HashMap.class),
-                GSON.fromJson(((Document) sscDocument.get("unsaturatedAtomIndices")).toJson(), ArrayList.class),
+                sscDocument.get("unsaturatedAtomIndices", ArrayList.class),
                 GSON.fromJson(((Document) sscDocument.get("multiplicitySections")).toJson(), HashMap.class)
                 );
         ssc.setIndex(sscDocument.getLong("index"));
