@@ -384,16 +384,6 @@ public final class SSCLibrary {
                 }
             }
         }
-
-//        sscLibrary.getSSCs().parallelStream().forEach(ssc -> {
-//            if (!this.insert(ssc)) {
-//                try {
-//                    throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-//                } catch (CDKException ex) {
-//                    Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-//                }
-//            }
-//        });
     }
     
     /**
