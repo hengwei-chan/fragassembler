@@ -14,7 +14,6 @@ package start;
 
 import analysis.MultiplicitySectionsBuilder;
 import assembly.Assembly;
-import casekit.NMR.Utils;
 import casekit.NMR.dbservice.MongoDB;
 import casekit.NMR.match.Matcher;
 import casekit.NMR.model.Signal;
@@ -35,12 +34,7 @@ import search.SSCRanker;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class ProcessQueries {
 
@@ -254,13 +248,14 @@ public class ProcessQueries {
 
         // empty SSC library
         this.sscLibrary.removeAll();
-        // initialize an executor for parallelization
-        final ExecutorService executor = Utils.initExecuter(this.nThreads);
-        final ArrayList<Callable<ArrayList<Document>>> callables = new ArrayList<>();
 
+        final ArrayList<Document> resultPreSearch = new ArrayList<>();
+        FindIterable<Document> resultPreSearch1;
+        ArrayList<Document> resultPreSearch2;
+        Spectrum subspectrum;
+        Double matchFactor;
         System.out.println("\nextending from pre-search result...");
         this.tm.start();
-        // add all task to do
         for (int n = 0; n < rangesCount; n++) {
             // specify ranges to use for pre-searches
             final Bson filterRange;
@@ -271,60 +266,20 @@ public class ProcessQueries {
                 filterRange = Document.parse("{$and: [{\"index\": {$gte: " + (n * rangesSize) + "}}, {\"index\": {$lte: " + (((n + 1) * rangesSize) - 1) + "}}]}");
 //                    System.out.println("n: " + n + " -> begin: " + (n * rangeSizes) + ", end: " + (((n + 1) * rangeSizes) - 1) + " -> " + this.collection.countDocuments());
             }
-
-            callables.add((Callable<ArrayList<Document>>) () -> {
-//                    System.out.println("pre-search 1...");
-//                    this.tm.start();
-                FindIterable<Document> resultPreSearch1 = this.collection.find(Filters.and(filters)).filter(filterRange);
-                ArrayList<Document> resultPreSearch2 = new ArrayList<>();
-//                    System.out.println("pre-search 1 done!!!");
-//                    this.tm.stop();
-//                    System.out.println("--> time needed: " + this.tm.getResult() + " s");
-
-
-//                    System.out.println("pre-search 2...");
-//                    this.tm.start();
-                // bottleneck: the iteration over result (FindIterable object) is very slow, even for small datasets
-                // -> split whole collection over all given threads
-                Spectrum subspectrum;
-                Double matchFactor;
-                for (final Document document : resultPreSearch1) {
-                    subspectrum = gson.fromJson(document.getEmbedded(keys, Document.class).toJson(), Spectrum.class);
-                    matchFactor = Matcher.calculateAverageDeviation(subspectrum, querySpectrum, 0, 0, this.shiftTol);
-                    if ((matchFactor != null) && (matchFactor <= this.matchFactorThrs) && Matcher.matchSpectra(subspectrum, querySpectrum, 0, 0, this.shiftTol).isFullyAssigned(0)) {
-                        resultPreSearch2.add(document);
-                    }
+            resultPreSearch1 = this.collection.find(Filters.and(filters)).filter(filterRange);
+            resultPreSearch2 = new ArrayList<>();
+            // bottleneck: the iteration over result (FindIterable object) is very slow, even for small datasets
+            // -> split whole collection over all given threads
+            for (final Document document : resultPreSearch1) {
+                subspectrum = gson.fromJson(document.getEmbedded(keys, Document.class).toJson(), Spectrum.class);
+                matchFactor = Matcher.calculateAverageDeviation(subspectrum, querySpectrum, 0, 0, this.shiftTol);
+                if ((matchFactor != null) && (matchFactor <= this.matchFactorThrs) && Matcher.matchSpectra(subspectrum, querySpectrum, 0, 0, this.shiftTol).isFullyAssigned(0)) {
+                    resultPreSearch2.add(document);
                 }
-//                    System.out.println("pre-search 2 done!!!");
-//                    this.tm.stop();
-//                    System.out.println("--> time needed: " + this.tm.getResult() + " s");
-                return resultPreSearch2;
-            });
+            }
+            resultPreSearch.addAll(resultPreSearch2);
         }
-        // execute all task in parallel
-        executor.invokeAll(callables)
-                .stream()
-                .map(future -> {
-                    try {
-                        return future.get();
-                    } catch (InterruptedException | ExecutionException e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
-                .forEach((resultPresearches) -> {
-                    try {
-                        this.sscLibrary.extend(resultPresearches);
-                    } catch (CDKException | CloneNotSupportedException | InterruptedException ex) {
-                        try {
-                            throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion of SSCs failed");
-                        } catch (CDKException e) {
-                            Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, e);
-                        }
-                    }
-                });
-        // shut down the executor service
-        Utils.stopExecuter(executor, 5);
-
+        this.sscLibrary.extend(resultPreSearch);
         System.out.println("extension done!!!");
         this.tm.stop();
         System.out.println("--> time needed: " + this.tm.getResult() + " s");
