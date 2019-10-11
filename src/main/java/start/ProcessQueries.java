@@ -85,23 +85,6 @@ public class ProcessQueries {
         this.useMongoDB = true;
     }
 
-//    public static Spectrum basicTextSpectrumToSpectrum(final String basicSpectrum){
-//        basicSpectrum.
-//        final Iterator<String> it = this.br.lines().iterator();
-//        String line;
-//        while (it.hasNext()) {
-//            line = it.next();
-//            if (line.startsWith("//")) {
-//                continue;
-//            }
-//            if (line.startsWith("#")) {
-//                System.out.println("\n\nskip query: " + querySpectrumCounter + " -> " + line + "\n");
-//                querySpectrumCounter++;
-//                continue;
-//            }
-//        }
-//    }
-
     public void process() throws Exception {
 
         System.out.println("\n\n-> processing query file: \"" + this.pathToQueriesFile + "\" ...");
