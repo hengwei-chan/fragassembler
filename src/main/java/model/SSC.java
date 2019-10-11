@@ -134,7 +134,7 @@ public final class SSC {
     }
 
     /**
-     * Returns a full clone of that SSC, with one exception: The index of the 
+     * Returns a full clone of that SSC, with one exception: The index of the
      * SSC clone is set to default value (-1).
      *
      * @return
@@ -480,7 +480,7 @@ public final class SSC {
     }
     
     /**
-     * Returns the used maximum number of spheres for building the SSC's 
+     * Returns the used maximum number of spheres for building the SSC's
      * HOSE codes.
      *
      * @return
