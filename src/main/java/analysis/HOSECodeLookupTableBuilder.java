@@ -12,8 +12,10 @@
 package analysis;
 
 import casekit.NMR.dbservice.MongoDB;
+import casekit.NMR.dbservice.NMRShiftDB;
 import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
+import fragmentation.Fragmentation;
 import model.SSCLibrary;
 import org.apache.commons.cli.*;
 import org.bson.Document;
@@ -39,7 +41,7 @@ public class HOSECodeLookupTableBuilder {
             final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
             for (int m = 0; m <= maxSphere; m++) {
                 System.out.println("Build fragments for maxsphere: " + m);
-                sscLibrary.extend(pathToNMRShiftDB, NMRShiftDBSpectrumProperty, m);
+                sscLibrary.extend(Fragmentation.buildSSCLibrary(NMRShiftDB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, NMRShiftDBSpectrumProperty), m, nThreads));
                 System.out.println("done...");
             }
             
@@ -51,7 +53,7 @@ public class HOSECodeLookupTableBuilder {
             System.out.println("done...");
 
             MongoDB.logout(mongo);
-        } catch (FileNotFoundException | CDKException | InterruptedException | CloneNotSupportedException ex) {
+        } catch (FileNotFoundException | CDKException | InterruptedException ex) {
             Logger.getLogger(HOSECodeLookupTableBuilder.class.getName()).log(Level.SEVERE, null, ex);
             
             return false;
