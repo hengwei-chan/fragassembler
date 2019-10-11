@@ -36,6 +36,7 @@ import search.SSCRanker;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
@@ -160,36 +161,6 @@ public class ProcessQueries {
 
     public void processCore(final SSCRanker sscRanker, final Spectrum querySpectrum, final long querySpectrumCounter) throws Exception {
 
-//
-//        this.sscLibrary.buildHOSELookupTables();
-//        System.out.println("\n\nranked SSC library shifts: ");
-//        ArrayList<Double> shifts;
-//        final double multiplierIQR = 1.5;
-//        boolean toShow;
-//        for (final String HOSECode : this.sscLibrary.getHOSECodeLookupTableShifts().keySet()){
-//            shifts = this.sscLibrary.getHOSECodeLookupTableShifts().get(HOSECode);
-//
-//            toShow = false;
-////            while (!Utils.getOutliers(shifts, multiplierIQR).isEmpty()){
-////                System.out.println(" -> " + HOSECode + ": " + shifts + " -> " + Utils.getOutliers(shifts, multiplierIQR));
-////                System.out.println(" ---> " + Utils.getMean(shifts) + " vs. " + Utils.getMedian(shifts) + " vs. " + Utils.getRMS(shifts));
-////                shifts = Utils.removeOutliers(shifts, multiplierIQR);
-////                toShow = true;
-////            }
-//            if (!Utils.getOutliers(shifts, multiplierIQR).isEmpty()){
-//                System.out.println(" -> " + HOSECode + ": " + shifts + " -> " + Utils.getOutliers(shifts, multiplierIQR));
-//                System.out.println(" ---> " + Utils.getMean(shifts) + " vs. " + Utils.getMedian(shifts) + " vs. " + Utils.getRMS(shifts));
-//                shifts = Utils.removeOutliers(shifts, multiplierIQR);
-//                toShow = true;
-//            }
-//
-//            if(toShow){
-//                System.out.println(" -> " + HOSECode + ": " + shifts + " -> " + Utils.getOutliers(shifts, multiplierIQR));
-//                System.out.println(" ---> " + Utils.getMean(shifts) + " vs. " + Utils.getMedian(shifts) + " vs. " + Utils.getRMS(shifts) + "\n");
-//            }
-//        }
-//        System.out.println("\n\n");
-
         sscRanker.findHits(querySpectrum, this.shiftTol);
         System.out.println("\n\nno. of matches:    " + sscRanker.getHitsCount());
         System.out.println("ranked SSC indices:    " + sscRanker.getRankedSSCIndices());
@@ -199,14 +170,14 @@ public class ProcessQueries {
         final SSCLibrary rankedSSCLibrary = sscRanker.getHits();
 
         long nStartSSCs;
-        if ((this.nStarts > 0) && (this.nStarts < rankedSSCLibrary.getSSCCount()/*sscRanker.getHitsCount()*/)) {
+        if ((this.nStarts > 0) && (this.nStarts < rankedSSCLibrary.getSSCCount())) {
             nStartSSCs = this.nStarts;
         } else {
             nStartSSCs = rankedSSCLibrary.getSSCCount();
         }
         System.out.println("\nnumber of start SSCs for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
-        final HashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
+        final ConcurrentHashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
 
         System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + querySpectrum.getSpecDescription() + "):\t" + solutions.size());
 
@@ -247,52 +218,9 @@ public class ProcessQueries {
             bw.append(smiles + " " + i + " " + tanimotoCoefficients.get(smiles));
             bw.newLine();
             bw.flush();
-
-
-
-
-//            SSCLibrary sscLibrary = new SSCLibrary(nThreads);
-//            SSC ssc;
-//            int maxSphere = 3;
-//            for (int j = 0; j < solutions.get(smiles).getAtomCount(); j++) {
-//                ssc = Fragmentation.buildSSC(solutions.get(smiles).getSubstructure(), solutions.get(smiles).getSubspectrum(), solutions.get(smiles).getAssignments(), j, maxSphere);
-//                if(ssc != null){
-//                    ssc.setIndex(sscLibrary.getSSCCount());
-//                    sscLibrary.insert(ssc);
-//                }
-//            }
-//
-//            int rootAtomIndex = 7;
-//            System.out.println("HOSE tree: " + HOSECodeBuilder.buildConnectionTree(Fragmentation.buildSubstructure(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere), 0, maxSphere));
-//            System.out.println(" -> HOSE: " + HOSECodeBuilder.buildHOSECode(Fragmentation.buildSubstructure(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere), 0, maxSphere, false));
-//            System.out.println("HOSE tree: " + HOSECodeBuilder.buildConnectionTree(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere));
-//            System.out.println(" -> HOSE: " + HOSECodeBuilder.buildHOSECode(solutions.get(smiles).getSubstructure(), rootAtomIndex, maxSphere, false));
-//
-//            Utils.generatePicture(solutions.get(smiles).getSubstructure(), "out_final.png");
-//            sscLibrary.buildHOSELookupTables();
-//            Spectrum predictedSpectrum = Predict.predictSpectrum(sscLibrary.getHOSECodeLookupTableShifts(), solutions.get(smiles).getSubstructure(), maxSphere, "13C");
-//            ArrayList<Double> sortedShiftList = new ArrayList<>(predictedSpectrum.getShifts(0));
-//            Collections.sort(sortedShiftList);
-//            System.out.println("PREDICTION: " + sortedShiftList);
-
-
-
         }
 
         bw.close();
-
-
-
-//        int maxSphere = 3;
-//        int rootAtomIndex1 = 3;
-//        int rootAtomIndex2 = 0;
-//        ConnectionTree connectionTreeSSC1 = HOSECodeBuilder.buildConnectionTree(ssc1.getSubstructure(), rootAtomIndex1, maxSphere);
-//        ConnectionTree connectionTreeSSC2 = HOSECodeBuilder.buildConnectionTree(ssc2.getSubstructure(), rootAtomIndex2, maxSphere);
-//        System.out.println( "\n"+ connectionTreeSSC1 + "\n" + connectionTreeSSC2);
-//        System.out.println(HOSECodeBuilder.buildHOSECode(ssc1.getSubstructure(), rootAtomIndex1, maxSphere, false) + "\n"
-//                + HOSECodeBuilder.buildHOSECode(ssc2.getSubstructure(), rootAtomIndex2, maxSphere, false));
-
-
     }
 
     private void presearch(final Spectrum querySpectrum) throws InterruptedException, CDKException {
