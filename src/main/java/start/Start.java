@@ -26,67 +26,37 @@ public class Start {
     
     private String pathToNMRShiftDB, mongoUser, mongoPassword, mongoAuthDB, mongoDBName, mongoDBCollection, pathToQueriesFile, pathToOutputsFolder, pathToJSON, format;
     private int nThreads, nStarts, maxSphere, minMatchingSphere;
-    private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON, removeDuplicates;
-    private SSCLibrary sscLibrary;   
-    private ProcessQueries processQueries;
+    private boolean importFromNMRShiftDB, extendFromNMRShiftDB, useMongoDB, useJSON;
     private double shiftTol, matchFactorThrs;
-    public static double EQUIV_SIGNAL_THRS = 0.5, DUPLICATES_SHIFT_TOL = 5.0;
+    public static double EQUIV_SIGNAL_THRS = 0.5;
     public static int DECIMAL_PLACES = 2;
 
     public static final String SIGNAL_NUCLEUS = "13C";
     public static final String SPECTRUM_PROPERTY = "Spectrum " + Start.SIGNAL_NUCLEUS + " 0";
     
     public void start() throws Exception {
+        final SSCLibrary sscLibrary;
         if (this.useMongoDB) {
             final PrepareMongoDB prepareMongoDB = new PrepareMongoDB(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-            prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection, this.removeDuplicates);
-            this.sscLibrary = new SSCLibrary();
+            prepareMongoDB.prepare(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
+            sscLibrary = new SSCLibrary();
         } else if (this.useJSON) {
             final PrepareJSONFile prepareJSONFile = new PrepareJSONFile(this.nThreads, this.importFromNMRShiftDB, this.extendFromNMRShiftDB, this.pathToNMRShiftDB, this.maxSphere);
-            this.sscLibrary = prepareJSONFile.prepare(this.pathToJSON,  this.removeDuplicates);
+            sscLibrary = prepareJSONFile.prepare(this.pathToJSON);
         } else {
             throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": invalid format: \"" + this.format + "\"");
         }
-        this.processQueries = new ProcessQueries(this.sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
+        final ProcessQueries processQueries = new ProcessQueries(sscLibrary, this.pathToQueriesFile, this.pathToOutputsFolder, this.nThreads, this.nStarts, this.shiftTol, this.matchFactorThrs, this.minMatchingSphere);
         if (this.useMongoDB) {
-            this.processQueries.initMongoDBProcessing(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
+            processQueries.initMongoDBProcessing(this.mongoUser, this.mongoPassword, this.mongoAuthDB, this.mongoDBName, this.mongoDBCollection);
         }
-        this.processQueries.process();
+        processQueries.process();
 
         System.gc();
     }
     
     
     private void parseArgs(String[] args) throws org.apache.commons.cli.ParseException, CDKException {
-
-//        SmilesParser smilesParser = new SmilesParser(new SilentChemObjectBuilder());
-//        IAtomContainer ac = smilesParser.parseSmiles("FC1=CC=CC(Cl)=C1");
-//        ac.getAtom(2).setImplicitHydrogenCount(0);
-//        IAtomContainer ac2 = smilesParser.parseSmiles("OC(=O)C1=C(F)C=CC=C1");//OC(=O)C1=C(F)C=C(Cl)C=C1
-//        ac2.getAtom(7).setImplicitHydrogenCount(0);
-//        try {
-//            Utils.generatePicture(ac, "/Users/mwenk/Downloads/ac.png");
-//            for (int i = 0; i < ac.getAtomCount(); i++) {
-//                System.out.println(i + " -> " + HOSECodeBuilder.buildHOSECode(ac, i, 2, false));
-//            }
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//        System.out.println();
-//        try {
-//            Utils.generatePicture(ac2, "/Users/mwenk/Downloads/ac2.png");
-//            for (int i = 0; i < ac2.getAtomCount(); i++) {
-//                System.out.println(i + " -> " + HOSECodeBuilder.buildHOSECode(ac2, i, 2, false));
-//            }
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//        IAtomContainer ac3 = smilesParser.parseSmiles("OC(=O)C1=C(F)C=C(Cl)C=C1");
-//        try {
-//            Utils.generatePicture(ac3, "/Users/mwenk/Downloads/ac3.png");
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
 
         final Options options = setupOptions(args);
         final CommandLineParser parser = new DefaultParser();
@@ -159,11 +129,6 @@ public class Start {
                 
                 System.out.println("-importFromNMRShiftDB: " + this.importFromNMRShiftDB);
                 System.out.println("-extendFromNMRShiftDB: " + this.extendFromNMRShiftDB); 
-            }   
-            
-            this.removeDuplicates = false;
-            if(cmd.hasOption("noduplicates")){
-                this.removeDuplicates = true;
             }
             
             this.shiftTol = Double.parseDouble(cmd.getOptionValue("tol"));
@@ -179,7 +144,6 @@ public class Start {
             System.out.println("-minMatchingSphere: " + this.minMatchingSphere);   
             System.out.println("-nThreads: " + this.nThreads);
             System.out.println("-nStarts: " + this.nStarts);
-            System.out.println("-removeDuplicates: " + this.removeDuplicates);
             System.out.println("-pathToQueriesFile: " + this.pathToQueriesFile);
             System.out.println("-pathToOutputsFolder: " + this.pathToOutputsFolder + "\n\n");
             
@@ -316,12 +280,6 @@ public class Start {
                 .desc("Collection name to fetch from selected database in MongoDB.")
                 .build();
         options.addOption(mongoCollectionNameOption);
-        Option removeDuplicatesOption = Option.builder("nd")
-                .required(false)
-                .longOpt("noduplicates")
-                .desc("If given, the SSC library to build/extend will contain no structural duplicates with similar chemical shifts (deviations smaller than " + Start.DUPLICATES_SHIFT_TOL + " ppm).")
-                .build();
-        options.addOption(removeDuplicatesOption);
         Option pathToJSONLibraryOption = Option.builder("j")
                 .required(false)
                 .hasArg()
