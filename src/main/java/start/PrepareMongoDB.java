@@ -52,7 +52,7 @@ public class PrepareMongoDB {
     }  
     
     public void prepare(final String mongoUser, final String mongoPassword, 
-            final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection, final boolean removeDuplicates) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException {
+            final String mongoAuthDB, final String mongoDBName, final String mongoDBCollection) throws CDKException, FileNotFoundException, InterruptedException, CloneNotSupportedException {
         
         this.mongo = MongoDB.login(mongoUser, mongoPassword, mongoAuthDB);
         this.collection = MongoDB.getCollection(this.mongo, mongoDBName, mongoDBCollection);
@@ -65,21 +65,15 @@ public class PrepareMongoDB {
             this.tm.stop();
             System.out.println("--> time needed: " + this.tm.getResult() + " s");
             
-            long offset = 0;
             // create SSC library for a specific max sphere and insert into into the MongoDB collection
             for (int m = 2; m <= this.maxSphere; m++) {
                 System.out.println("Building SSCs for " + m + "-spheres...");
                 this.tm.start();
-                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, m, offset);
-//                if(removeDuplicates){
-//                    this.sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
-//                }
+                this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, m);
                 System.out.println("SSCs for " + m + "-spheres build!!!");
                 this.tm.stop();
                 System.out.println("--> time needed: " + this.tm.getResult() + " s");
                 System.out.println("-> #SSCs in SSC library: " + this.sscLibrary.getSSCCount());
-
-                offset = this.sscLibrary.getLastSSCIndex() + 1;
             }
             System.out.println("storing SSC library into MongoDB in database \"" + mongoDBName + "\" in collection \"" + mongoDBCollection + "\"...");
             this.tm.start();
@@ -88,14 +82,9 @@ public class PrepareMongoDB {
             this.tm.stop();
             System.out.println("--> time needed: " + tm.getResult() + " s");
         } else if (this.extendFromNMRShiftDB) {
-            int offset = ((int) this.collection.find().sort(new BasicDBObject("index", -1)).limit(1).first().get("index")) + 1;
-            System.out.println("offset: " + offset);
             System.out.println("Building SSCs for " + this.maxSphere + "-spheres...");
             this.tm.start();
-            this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, this.maxSphere, offset);
-//            if(removeDuplicates){
-//                this.sscLibrary.removeDuplicates(Start.DUPLICATES_SHIFT_TOL);
-//            }
+            this.sscLibrary.extend(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, this.maxSphere);
             System.out.println("SSCs for " + this.maxSphere + "-spheres build!!!");
             this.tm.stop();
             System.out.println("--> time needed: " + this.tm.getResult() + " s");
