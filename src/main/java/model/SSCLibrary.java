@@ -572,7 +572,6 @@ public final class SSCLibrary {
      */
     public void extend(final String pathToJSON) throws FileNotFoundException {
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
-
         final JsonParser jsonParser = new JsonParser();
         br.lines().forEach( line -> {
             if(!line.startsWith("{") && !line.endsWith("}")){
