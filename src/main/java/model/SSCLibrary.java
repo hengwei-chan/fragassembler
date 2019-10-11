@@ -574,7 +574,6 @@ public final class SSCLibrary {
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
 
         final JsonParser jsonParser = new JsonParser();
-//        br.lines().parallel().forEach( line -> {
         br.lines().forEach( line -> {
             if(!line.startsWith("{") && !line.endsWith("}")){
                 String asJSON = "";
