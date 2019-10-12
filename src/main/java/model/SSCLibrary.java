@@ -22,7 +22,6 @@ import start.TimeMeasurement;
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -34,8 +33,12 @@ import java.util.logging.Logger;
  */
 public final class SSCLibrary {
 
-    private final ConcurrentHashMap<Long, SSC> map;
-    private final ConcurrentHashMap<String, ArrayList<Long>> HOSECodeLookupTable;
+    /**
+     * Holds all SSC entries as LinkedHashMap to keep them in input order. <br>
+     * That is important for holding ranked SSCs in order in SSCRanker class.
+     */
+    private final LinkedHashMap<Long, SSC> map;
+    private final HashMap<String, ArrayList<Long>> HOSECodeLookupTable;
     private int nThreads;
     
     /**
@@ -52,8 +55,8 @@ public final class SSCLibrary {
      * @param nThreads number of threads to use for parallelization
      */
     public SSCLibrary(final int nThreads){
-        this.map = new ConcurrentHashMap<>();
-        this.HOSECodeLookupTable = new ConcurrentHashMap<>();
+        this.map = new LinkedHashMap<>();
+        this.HOSECodeLookupTable = new HashMap<>();
         this.nThreads = nThreads;
     }
 
@@ -67,7 +70,7 @@ public final class SSCLibrary {
      * values
      *
      */
-    public ConcurrentHashMap<String, ArrayList<Long>> getHOSECodeLookupTable() {
+    public HashMap<String, ArrayList<Long>> getHOSECodeLookupTable() {
         return this.HOSECodeLookupTable;
     }
     
@@ -101,7 +104,7 @@ public final class SSCLibrary {
         bw.write("{");
         bw.newLine();
         for (final SSC ssc : this.getSSCs()) {
-            json = SSCConverter.SSCToJSON(ssc, sscCounter);
+            json = SSCConverter.SSCToJSON(ssc);
             bw.write(json.substring(1, json.length() - 1));
             if(sscCounter < this.getSSCCount() - 1){
                 bw.write(",");
@@ -192,17 +195,26 @@ public final class SSCLibrary {
     /**
      * Extends this SSC library by all SSC from given second one.
      *
-     * @param sscLibrary SSC library with SSC to add to this library
+     * @param sscLibrary SSC library with SSCs to add to this library
      *
      */
-    public void extend(final SSCLibrary sscLibrary) {
-        this.extend(sscLibrary.getSSCs());
+    public boolean extend(final SSCLibrary sscLibrary) {
+        return this.extend(sscLibrary.getSSCs());
     }
 
-    public void extend(final Collection<SSC> sscCollection){
+    /**
+     * Extends this SSC library by all SSC from given second one.
+     *
+     * @param sscCollection collection with SSCs to add to this library
+     *
+     * @return true if all SSCs in collection could be added
+     */
+    public boolean extend(final Collection<SSC> sscCollection){
+        // no further parallelization needed because insert() method will block anyway
         for (final SSC ssc : sscCollection) {
             if (ssc != null) {
-                if (!this.insert(ssc)) {
+                if (!this.insert(ssc, false)) {
+                    System.err.println(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
                     try {
                         throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
                     } catch (CDKException ex) {
@@ -211,6 +223,8 @@ public final class SSCLibrary {
                 }
             }
         }
+
+        return true;
     }
     
     /**
@@ -219,9 +233,10 @@ public final class SSCLibrary {
      * @param pathToJSON path to JSON file containing SSC
      * library
      *
+     * @return
      * @throws java.io.FileNotFoundException
      */
-    public void extend(final String pathToJSON) throws FileNotFoundException, InterruptedException {
+    public boolean extend(final String pathToJSON) throws FileNotFoundException, InterruptedException {
         final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
         final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
         final JsonParser jsonParser = new JsonParser();
@@ -244,7 +259,7 @@ public final class SSCLibrary {
             }
         });
         SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
-        this.extend(convertedSSCs);
+        return this.extend(convertedSSCs);
     }
 
     /**
@@ -286,24 +301,8 @@ public final class SSCLibrary {
         return this.getSSCCount() == 0;
     }
     
-    /**
-     * Returns the last (numerical highest) SSC index of this SSC library.
-     * If this SSC library is empty then null will be returned.
-     *
-     * @return
-     * 
-     * @see #isEmpty() 
-     */
-    public Long getLastSSCIndex(){
-        if(this.isEmpty()){
-            return null;
-        }
-        
-        return Collections.max(this.getSSCIndices());
-    }
-    
     public long getSSCCount(){
-        return this.map.mappingCount();
+        return this.map.size();
     }
     
     public SSC getSSC(final long sscIndex){
@@ -314,7 +313,7 @@ public final class SSCLibrary {
         return this.map.containsKey(sscIndex);
     }    
     
-    public ConcurrentHashMap<Long, SSC> getMap(){
+    public LinkedHashMap<Long, SSC> getMap(){
         return this.map;
     }
     
@@ -336,16 +335,17 @@ public final class SSCLibrary {
     public Collection<SSC> getSSCs(){
         return this.map.values();
     }
-    
+
     /**
      * Inserts a new SSC to this SSC library.
      *
      * @param ssc SSC to add to this library
+     * @param clone indicates whether SSCs to insert should be cloned beforehand
      * @return false if the given SSC could not be cloned successfully
      * 
      * @see #findSSC(SSC)
      */
-    public boolean insert(final SSC ssc) {
+    synchronized public boolean insert(final SSC ssc, final boolean clone) {
         if(ssc == null){
             return false;
         }
@@ -359,15 +359,20 @@ public final class SSCLibrary {
         if (!this.HOSECodeLookupTable.containsKey(HOSECode)) {
             this.HOSECodeLookupTable.put(HOSECode, new ArrayList<>());
         }
-        final SSC sscClone;
-        try {
-            sscClone = ssc.getClone();
-        } catch (Exception e) {
-            return false;
+        final SSC sscToInsert;
+        if(clone){
+            try {
+                sscToInsert = ssc.getClone();
+            } catch (Exception e) {
+                return false;
+            }
+        } else {
+            sscToInsert = ssc;
         }
-        sscClone.setIndex(this.getSSCCount());
-        this.HOSECodeLookupTable.get(HOSECode).add(sscClone.getIndex());
-        this.map.put(sscClone.getIndex(), sscClone);
+
+        sscToInsert.setIndex(this.getSSCCount());
+        this.HOSECodeLookupTable.get(HOSECode).add(sscToInsert.getIndex());
+        this.map.put(sscToInsert.getIndex(), sscToInsert);
         
         return true;
     }
@@ -381,11 +386,10 @@ public final class SSCLibrary {
         }
     }
     
-    public boolean remove(final long sscIndex){
+    synchronized public boolean remove(final long sscIndex){
         if(!this.containsSSC(sscIndex)){
             return false;
         }
-
         this.HOSECodeLookupTable.get(this.getSSC(sscIndex).getAsHOSECode()).remove(sscIndex);
         return this.map.remove(sscIndex, this.getSSC(sscIndex));
     }
@@ -400,15 +404,11 @@ public final class SSCLibrary {
      * set too the number of threads of this class object.
      *
      * @return
-     * @throws CDKException
-     * @throws CloneNotSupportedException
-     * @throws InterruptedException
-     *
      */
-    public SSCLibrary getClone() throws Exception {
+    public SSCLibrary getClone() {
         final SSCLibrary sscLibrary = new SSCLibrary(this.nThreads);
         for (final long sscIndex : this.map.keySet()) {
-            sscLibrary.insert(this.getSSC(sscIndex).getClone());
+            sscLibrary.insert(this.getSSC(sscIndex), true);
         }
         
         return sscLibrary;
@@ -430,19 +430,14 @@ public final class SSCLibrary {
      *
      */
     public void exportToMongoDB(final MongoCollection<Document> collection) throws InterruptedException{
-
-        final ConcurrentLinkedQueue<Document> convertedDocuments = new ConcurrentLinkedQueue<>();
-        final ArrayList<Callable<Document>> callables = new ArrayList<>();
+        final List<Document> convertedDocuments = Collections.synchronizedList(new ArrayList<>());
         // add all task to do
-        long sscCounter = 0;
+        final ArrayList<Callable<Document>> callables = new ArrayList<>();
         for (final SSC ssc : this.getSSCs()) {
-            final long sscCounterCopy = sscCounter;
-            callables.add(() -> SSCConverter.SSCToDocument(ssc, sscCounterCopy));
-            sscCounter++;
+            callables.add(() -> SSCConverter.SSCToDocument(ssc));
         }
-
         SSCConverter.convertSSCsToDocuments(callables, convertedDocuments, this.nThreads);
-        collection.insertMany(new ArrayList<>(convertedDocuments));
+        collection.insertMany(convertedDocuments);
     }
 
     /**
