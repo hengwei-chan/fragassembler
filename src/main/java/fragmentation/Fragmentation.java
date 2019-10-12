@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 
 public class Fragmentation {
@@ -37,7 +36,7 @@ public class Fragmentation {
      * an atom container set for all its molecules and atoms by using a 
      * breadth first search with spherical limit.
      *
-     * @param SSCComponentsSet
+     * @param SSCComponentsSet Set of components for each structure to build SSCs from it
      * @param maxSphere Spherical limit for building a substructure into 
      * all directions
      * @param nThreads Number of threads to use for parallelization
@@ -46,20 +45,21 @@ public class Fragmentation {
      *
      * @throws java.lang.InterruptedException
      *
-     * @see Fragmentation#buildSSCs(Object[], int)
+     * @see casekit.NMR.dbservice.NMRShiftDB#getSSCComponentsFromNMRShiftDB(String, String)
+     * @see Fragmentation#buildSSCs(IAtomContainer, Spectrum, Assignment, int)
      */
     public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads) throws InterruptedException {
-
-        final ConcurrentLinkedQueue<SSC> buildSSCs = new ConcurrentLinkedQueue<>();
-        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
+        final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
+        final ArrayList<Callable<Boolean>> callables = new ArrayList<>();
         // add all task to do
         for (final int index: SSCComponentsSet.keySet()) {
-            callables.add(() -> Fragmentation.buildSSCs(SSCComponentsSet.get(index), maxSphere));
+            callables.add(() -> sscLibrary.extend(Fragmentation.buildSSCs((IAtomContainer) SSCComponentsSet.get(index)[0], (Spectrum) SSCComponentsSet.get(index)[1], (Assignment) SSCComponentsSet.get(index)[2], maxSphere)));
         }
-        ParallelTasks.processTasks(callables, sscLibraryTemp -> buildSSCs.addAll(sscLibraryTemp.getSSCs()), nThreads);
-
-        final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
-        sscLibrary.extend(buildSSCs);
+        ParallelTasks.processTasks(callables, inserted -> {
+            if(!inserted){
+                System.err.println(" -> could not insert a SSC");
+            }
+        }, nThreads);
 
         return sscLibrary;
     }
@@ -69,18 +69,16 @@ public class Fragmentation {
      * structure for all its atoms by using a breadth first search 
      * with spherical limit. 
      *
-     * @param SSCComponentsSet
+     * @param structure Structure to build the SSCs from
+     * @param spectrum Spectrum with signals to use for each assigned atom in structure
+     * @param assignment Assignments between atoms in structure and belonging signals in spectrum
      * @param maxSphere Spherical limit for building a substructure into 
-     * all directions
-     * to be the same type as in used spectrum property.
+     * all directions to be the same type as in used spectrum property.
      *
      * @return
      * @see Fragmentation#buildSSC(IAtomContainer, Spectrum, Assignment, int, int)
      */
-    private static SSCLibrary buildSSCs(final Object[] SSCComponentsSet, final int maxSphere) throws CDKException {
-        final IAtomContainer structure = (IAtomContainer) SSCComponentsSet[0];
-        final Spectrum spectrum = (Spectrum) SSCComponentsSet[1];
-        final Assignment assignment = (Assignment) SSCComponentsSet[2];
+    private static SSCLibrary buildSSCs(final IAtomContainer structure, final Spectrum spectrum, final Assignment assignment, final int maxSphere) throws CDKException {
         // if the structure contains explicit hydrogens atoms then, after 
         // removing them, the assignments have to be corrected 
         if(Utils.containsExplicitHydrogens(structure)){
@@ -107,7 +105,7 @@ public class Fragmentation {
             if (ssc == null) {
                 return new SSCLibrary();
             }
-            sscLibrary.insert(ssc);
+            sscLibrary.insert(ssc, false);
         }
        
         return sscLibrary;
