@@ -54,7 +54,7 @@ public class SSCConverter {
         return ssc;
     }
     
-    public static Document SSCToDocument(final SSC ssc, final Long sscIndex){
+    public static Document SSCToDocument(final SSC ssc){
         final Document document = new Document();
         document.append("HOSECode", ssc.getHOSECode(ssc.getRootAtomIndex()));
         document.append("substructure", Document.parse(GSON.toJson(GSON.toJsonTree(new ExtendedConnectionMatrix(ssc.getSubstructure()), ExtendedConnectionMatrix.class))));
@@ -62,7 +62,7 @@ public class SSCConverter {
         document.append("assignment", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getAssignments(), Assignment.class))));
         document.append("maxSphere", ssc.getMaxSphere());
         document.append("rootAtomIndex", ssc.getRootAtomIndex());
-        document.append("index", sscIndex);
+        document.append("index", ssc.getIndex());
 //        document.append("HOSECodes", withDocument.parse(GSON.toJson(GSON.toJsonTree(ssc.getHOSECodes(), HashMap.class))));
 //        document.append("connectionTrees", withDocument.parse(GSON.toJson(GSON.toJsonTree(ssc.getConnectionTrees(), HashMap.class))));
         document.append("shifts", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShifts(), HashMap.class))));
@@ -95,8 +95,8 @@ public class SSCConverter {
         return ssc;
     }
 
-    public static String SSCToJSON(final SSC ssc, final Long sscIndex){
-        return new Document().append(String.valueOf(sscIndex), SSCConverter.SSCToDocument(ssc, sscIndex)).toJson();
+    public static String SSCToJSON(final SSC ssc){
+        return new Document().append(String.valueOf(ssc.getIndex()), SSCConverter.SSCToDocument(ssc)).toJson();
     }
 
     /**
