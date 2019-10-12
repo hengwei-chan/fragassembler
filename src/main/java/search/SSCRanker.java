@@ -214,7 +214,6 @@ public final class SSCRanker {
                 return tempHashMap;
             });
         }
-
         ParallelTasks.processTasks(callables, tempHashMap -> {
             if ((tempHashMap != null) && !tempHashMap.containsValue(null)) {
                 this.hits.putAll(tempHashMap);
@@ -275,8 +274,8 @@ public final class SSCRanker {
         SSC rankedSSC;
         for (final long rankedSSCIndex : this.rankedSSCIndices) {
             rankedSSC = this.getSSCLibrary().getSSC(rankedSSCIndex).getClone();
-            rankedSSC.setIndex(this.rankedSSCLibrary.getSSCCount());
-            this.rankedSSCLibrary.insert(rankedSSC);
+            // clone SSCs to insert because of possible modifications in assembly process (the start SSCs)
+            this.rankedSSCLibrary.insert(rankedSSC, true);
         }
     }
 
