@@ -14,14 +14,14 @@ package parallel;
 
 import casekit.NMR.Utils;
 
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 
 public class ParallelTasks {
-    public static <T> void processTasks(final ArrayList<Callable<T>> callables, final Consumer<T> consumer, final int nThreads) throws InterruptedException {
+    public static <T> void processTasks(final Collection<Callable<T>> callables, final Consumer<T> consumer, final int nThreads) throws InterruptedException {
         // initialize an executor for parallelization
         final ExecutorService executor = Utils.initExecuter(nThreads);
         // execute all task in parallel
