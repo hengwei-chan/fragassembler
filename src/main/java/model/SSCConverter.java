@@ -107,10 +107,10 @@ public class SSCConverter {
      * @param nThreads
      * @throws InterruptedException
      * 
-     * @see ParallelTasks#processTasks(ArrayList, Consumer, int)
+     * @see ParallelTasks#processTasks(Collection, Consumer, int) 
      * @see Collection#add(Object)
      */
-    public static void convertDocumentsToSSCs(final ArrayList<Callable<SSC>> callables, final Collection<SSC> collection, final int nThreads) throws InterruptedException {
+    public static void convertDocumentsToSSCs(final Collection<Callable<SSC>> callables, final Collection<SSC> collection, final int nThreads) throws InterruptedException {
         ParallelTasks.processTasks(callables, collection::add, nThreads);
     }
 
@@ -122,10 +122,10 @@ public class SSCConverter {
      * @param nThreads
      * @throws InterruptedException
      *
-     * @see ParallelTasks#processTasks(ArrayList, Consumer, int)
+     * @see ParallelTasks#processTasks(Collection, Consumer, int)
      * @see Collection#add(Object)
      */
-    public static void convertSSCsToDocuments(final ArrayList<Callable<Document>> callables, final Collection<Document> collection, final int nThreads) throws InterruptedException {
+    public static void convertSSCsToDocuments(final Collection<Callable<Document>> callables, final Collection<Document> collection, final int nThreads) throws InterruptedException {
         ParallelTasks.processTasks(callables, collection::add, nThreads);
     }
 
