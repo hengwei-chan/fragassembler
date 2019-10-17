@@ -74,24 +74,29 @@ public class Match {
         }
         if (!invalids.isEmpty()){
             // @TODO add code to handle bigger sizes than 2?
+//            final ArrayList<Integer> nodeKeysInSphereSSC2 = connectionTreeSSC2.getNodeKeysInSphere(sphere);
             if(invalids.size() == 2){
                 final ArrayList<Integer> nodeKeysInSphereSSC2 = connectionTreeSSC2.getNodeKeysInSphere(sphere);
+//                System.out.println("\n -> exactly two invalids -> between " + connectionTreeSSC1.getRootNode().getKey() + ", " + connectionTreeSSC2.getRootNode().getKey() + " -> in sphere: " + sphere + " -> " + invalids);
                 if(connectionTreeSSC2.swapChildNodes(connectionTreeSSC2.getNode(nodeKeysInSphereSSC2.get(invalids.get(0))).getParentNodes().get(0).getKey(),
                         nodeKeysInSphereSSC2.get(invalids.get(0)),
                         nodeKeysInSphereSSC2.get(invalids.get(1)))){
                     invalids = Match.getInvalidNodePairsInSphere(ssc1, ssc2, connectionTreeSSC1, connectionTreeSSC2, sphere, shiftTol);
                 }
-            }
-
-            else {
+            } else {
                 if(invalids.size() > 2){
-                    System.out.println("\n\n\n more than two invalids -> between " + connectionTreeSSC1.getRootNode().getKey() + ", " + connectionTreeSSC2.getRootNode().getKey() + " -> in sphere: " + sphere + " -> " + invalids + "\n\n\n");
+                    System.out.println("\n -> more than two invalids -> between " + connectionTreeSSC1.getRootNode().getKey() + ", " + connectionTreeSSC2.getRootNode().getKey() + " -> in sphere: " + sphere + " -> " + invalids);
+//                    for (int i = 0; i < invalids.size(); i++) {
+//                        for (int j = i + 1; j < invalids.size(); j++) {
+//                            System.out.println("--> would position i: " + i + " (" + connectionTreeSSC1.getNodesInSphere(sphere).get(i).getKey() + ")" + ", j: " + j + " (" + connectionTreeSSC2.getNodesInSphere(sphere).get(j).getKey() + ")" + " be a valid node pair? -> " +
+//                                    Match.isValidNodePair(ssc1, ssc2, connectionTreeSSC1.getNodesInSphere(sphere).get(i), connectionTreeSSC2.getNodesInSphere(sphere).get(j), shiftTol));
+//                        }
+//                    }
                 }
             }
-
         }
 
-        return invalids.isEmpty();
+        return (invalids != null) && invalids.isEmpty();
     }
 
     public static ArrayList<Integer> getInvalidNodePairsInSphere(final SSC ssc1, final SSC ssc2, final ConnectionTree connectionTreeSSC1, final ConnectionTree connectionTreeSSC2, final int sphere, final double shiftTol){
@@ -101,40 +106,40 @@ public class Match {
         final ArrayList<ConnectionTreeNode> nodesInSphereSSC1 = connectionTreeSSC1.getNodesInSphere(sphere);
         final ArrayList<ConnectionTreeNode> nodesInSphereSSC2 = connectionTreeSSC2.getNodesInSphere(sphere);
         final ArrayList<Integer> invalids = new ArrayList<>();
-        ConnectionTreeNode nodeInSphereSSC1, nodeInSphereSSC2;
-        Signal signalSSC1, signalSSC2;
+        Boolean isValidNodePair;
         for (int i = 0; i < connectionTreeSSC1.getNodesCountInSphere(sphere); i++) {
-            nodeInSphereSSC1 = nodesInSphereSSC1.get(i);
-            nodeInSphereSSC2 = nodesInSphereSSC2.get(i);
-            if(nodeInSphereSSC1.isRingClosureNode()){
-                continue;
-            }
-
-            if(((nodeInSphereSSC1.getAtom().getHybridization() != null) && (nodeInSphereSSC2.getAtom().getHybridization() != null))
-                    && (nodeInSphereSSC1.getAtom().getHybridization().compareTo(nodeInSphereSSC2.getAtom().getHybridization()) != 0)){
-                invalids.add(i);
-                continue;
-            }
-            if(((nodeInSphereSSC1.getAtom().getCharge() != null) && (nodeInSphereSSC2.getAtom().getCharge() != null))
-                    && (nodeInSphereSSC1.getAtom().getCharge().compareTo(nodeInSphereSSC2.getAtom().getCharge()) != 0)){
-                invalids.add(i);
-                continue;
-            }
-
-            signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, nodeInSphereSSC1.getKey()));
-            signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeInSphereSSC2.getKey()));
-            if((signalSSC1 == null) || (signalSSC2 == null)){
-                continue;
-            }
-            if(!signalSSC1.getMultiplicity().equals(signalSSC2.getMultiplicity()) // this is, actually, for the last matching sphere
-                            || (Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol) // @TODO is this shift comparison needed?
-            ){
+            isValidNodePair = Match.isValidNodePair(ssc1, ssc2, nodesInSphereSSC1.get(i), nodesInSphereSSC2.get(i), shiftTol);
+            if((isValidNodePair != null) && !isValidNodePair){
                 invalids.add(i);
             }
-
         }
 
         return invalids;
     }
 
+    public static Boolean isValidNodePair(final SSC ssc1, final SSC ssc2, final ConnectionTreeNode node1, final ConnectionTreeNode node2, final double shiftTol){
+        if(node1.isRingClosureNode() || node2.isRingClosureNode()){
+            return null;
+        }
+        if(((node1.getAtom().getHybridization() != null) && (node2.getAtom().getHybridization() != null))
+                && (node1.getAtom().getHybridization().compareTo(node2.getAtom().getHybridization()) != 0)){
+            return false;
+        }
+        if(((node1.getAtom().getCharge() != null) && (node2.getAtom().getCharge() != null))
+                && (node1.getAtom().getCharge().compareTo(node2.getAtom().getCharge()) != 0)){
+            return false;
+        }
+        final Signal signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, node1.getKey()));
+        final Signal signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, node2.getKey()));
+        if((signalSSC1 == null) || (signalSSC2 == null)){
+            return null;
+        }
+        if(!signalSSC1.getMultiplicity().equals(signalSSC2.getMultiplicity()) // this is, actually, for the last matching sphere
+                || (Math.abs(signalSSC1.getShift(0) - signalSSC2.getShift(0)) > shiftTol) // @TODO is this shift comparison needed?
+        ){
+            return false;
+        }
+
+        return true;
+    }
 }
