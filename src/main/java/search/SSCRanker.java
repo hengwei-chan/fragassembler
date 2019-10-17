@@ -11,12 +11,13 @@
  */
 package search;
 
+import analysis.MultiplicitySectionsBuilder;
 import casekit.NMR.Utils;
 import casekit.NMR.match.Matcher;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
-import model.SSC;
 import model.SSCLibrary;
+import org.openscience.cdk.exception.CDKException;
 import parallel.ParallelTasks;
 import start.Start;
 
@@ -38,10 +39,11 @@ public final class SSCRanker {
     private final ConcurrentHashMap<Long, Object[]> hits;
     private final ArrayList<Long> rankedSSCIndices;
     private final SSCLibrary rankedSSCLibrary;
+    private final MultiplicitySectionsBuilder multiplicitySectionsBuilder;
     private final static int NO_OF_CALCULATIONS = 3, ASSIGNMENT_IDX = 0, MATCHFACTOR_IDX = 1, TANIMOTO_COEFFICIENT_IDX = 2;
     
     /**
-     * Instanciates a new object of this class.
+     * Instantiates a new object of this class.
      * The number of threads to use for parallelization is set to 1 
      * by default.
      * 
@@ -51,7 +53,7 @@ public final class SSCRanker {
     public SSCRanker(final SSCLibrary sscLibrary) { this(sscLibrary, 1); }
     
     /**
-     * Instanciates a new object of this class.     
+     * Instantiates a new object of this class.
      *
      * @param sscLibrary HashMap object consisting of SSC and their indices.
      * @param nThreads number of threads to use for matching and ranking of 
@@ -63,6 +65,7 @@ public final class SSCRanker {
         this.hits = new ConcurrentHashMap<>();
         this.rankedSSCIndices = new ArrayList<>();
         this.rankedSSCLibrary = new SSCLibrary(this.nThreads);
+        this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
     }     
     
     /**
@@ -189,21 +192,36 @@ public final class SSCRanker {
         this.buildRankedSSCLibrary();
     }
 
-    private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException{
+    private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException, CDKException {
         this.hits.clear();
 
+        final HashMap<String, ArrayList<Integer>> multiplicitySectionsQuerySpectrum = this.multiplicitySectionsBuilder.buildMultiplicitySections(querySpectrum);
         final ArrayList<Callable<HashMap<Long, Object[]>>> callables = new ArrayList<>();
         // add all task to do
         for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
             callables.add(() -> {
+
+                // pre-search: quick check for too much signals in at least one of the existing multiplicities
+                // could save time in comparison to Matcher.matchSpectra() (below) which has to search for matches (combinations)
+                // @TODO might be to extend via comparisons in single sections of each multiplicity
+                final HashMap<String, ArrayList<Integer>> multiplicitySectionsSSCSubspectrum = this.sscLibrary.getSSC(sscIndex).getMultiplicitySections();
+                if((multiplicitySectionsSSCSubspectrum.get("Q").size() > multiplicitySectionsQuerySpectrum.get("Q").size())
+                        || (multiplicitySectionsSSCSubspectrum.get("T").size() > multiplicitySectionsQuerySpectrum.get("T").size())
+                        || (multiplicitySectionsSSCSubspectrum.get("D").size() > multiplicitySectionsQuerySpectrum.get("D").size())
+                        || (multiplicitySectionsSSCSubspectrum.get("S").size() > multiplicitySectionsQuerySpectrum.get("S").size())){
+                    return null;
+                }
+                // calculation of matches and check whether each signal in SSC subspectrum has exactly one match in query spectrum
                 final Assignment matchAssignment = Matcher.matchSpectra(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, 0, 0, shiftTol);
                 if (!matchAssignment.isFullyAssigned(0)) {
                     return null;
                 }
+                // collect matched signals from query spectrum for Tanimoto coefficient calculation
                 final Spectrum matchedQuerySubspectrum = new Spectrum(querySpectrum.getNuclei());
                 for (final int signalIndexInQuerySpectrum : matchAssignment.getAssignments(0)) {
                     matchedQuerySubspectrum.addSignal(querySpectrum.getSignal(signalIndexInQuerySpectrum));
                 }
+                // further calculations: match factor (average deviation) and Tanimoto coefficient
                 final HashMap<Long, Object[]> tempHashMap = new HashMap<>();
                 final Object[] calculations = new Object[SSCRanker.NO_OF_CALCULATIONS];
                 calculations[SSCRanker.ASSIGNMENT_IDX] = matchAssignment;
@@ -269,13 +287,10 @@ public final class SSCRanker {
         });
     }
 
-    private void buildRankedSSCLibrary() throws Exception {
+    private void buildRankedSSCLibrary() {
         this.rankedSSCLibrary.removeAll();
-        SSC rankedSSC;
         for (final long rankedSSCIndex : this.rankedSSCIndices) {
-            rankedSSC = this.getSSCLibrary().getSSC(rankedSSCIndex).getClone();
-            // clone SSCs to insert because of possible modifications in assembly process (the start SSCs)
-            this.rankedSSCLibrary.insert(rankedSSC, true);
+            this.rankedSSCLibrary.insert(this.getSSCLibrary().getSSC(rankedSSCIndex), false);
         }
     }
 
