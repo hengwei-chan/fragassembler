@@ -200,7 +200,7 @@ public class ProcessQueries {
         bw.close();
     }
 
-    private void presearch(final Spectrum querySpectrum) throws InterruptedException, CDKException {
+    private void presearch(final Spectrum querySpectrum) throws CDKException {
 
         final MultiplicitySectionsBuilder multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
         HashMap<String, ArrayList<Integer>> multiplicitySectionsQuerySpectrum;
@@ -215,7 +215,7 @@ public class ProcessQueries {
         final long rangesSize = collectionSize / rangesCount;
 
         System.out.println("multiplicities and shift sections:");
-        multiplicitySectionsQuerySpectrum = multiplicitySectionsBuilder.getMultiplicitySections(querySpectrum);
+        multiplicitySectionsQuerySpectrum = multiplicitySectionsBuilder.buildMultiplicitySections(querySpectrum);
         for (final String mult : multiplicitySectionsQuerySpectrum.keySet()) {
             System.out.println("-> " + mult + ":\t" + multiplicitySectionsQuerySpectrum.get(mult));
         }
@@ -232,16 +232,16 @@ public class ProcessQueries {
         // empty SSC library
         this.sscLibrary.removeAll();
 
-        final ArrayList<Document> resultPreSearch = new ArrayList<>();
-        FindIterable<Document> resultPreSearch1;
-        ArrayList<Document> resultPreSearch2;
+        final ArrayList<Document> resultPresearch = new ArrayList<>();
+        FindIterable<Document> resultPresearch1;
+        ArrayList<Document> resultPresearch2;
         Spectrum subspectrum;
         Double matchFactor;
+        Bson filterRange;
         System.out.println("\nextending from pre-search result...");
         this.tm.start();
         for (int n = 0; n < rangesCount; n++) {
             // specify ranges to use for pre-searches
-            final Bson filterRange;
             if(n == (rangesCount - 1)){
                 filterRange = Document.parse("{$and: [{\"index\": {$gte: " + (n * rangesSize) + "}}, {\"index\": {$lte: " + collectionSize + "}}]}");
 //                    System.out.println("n: " + n + " -> begin: " + (n * rangeSizes) + ", end: " + this.collection.countDocuments() + " -> " + this.collection.countDocuments());
@@ -249,20 +249,20 @@ public class ProcessQueries {
                 filterRange = Document.parse("{$and: [{\"index\": {$gte: " + (n * rangesSize) + "}}, {\"index\": {$lte: " + (((n + 1) * rangesSize) - 1) + "}}]}");
 //                    System.out.println("n: " + n + " -> begin: " + (n * rangeSizes) + ", end: " + (((n + 1) * rangeSizes) - 1) + " -> " + this.collection.countDocuments());
             }
-            resultPreSearch1 = this.collection.find(Filters.and(filters)).filter(filterRange);
-            resultPreSearch2 = new ArrayList<>();
+            resultPresearch1 = this.collection.find(Filters.and(filters)).filter(filterRange);
+            resultPresearch2 = new ArrayList<>();
             // bottleneck: the iteration over result (FindIterable object) is very slow, even for small datasets
             // -> split whole collection over all given threads
-            for (final Document document : resultPreSearch1) {
+            for (final Document document : resultPresearch1) {
                 subspectrum = gson.fromJson(document.getEmbedded(keys, Document.class).toJson(), Spectrum.class);
                 matchFactor = Matcher.calculateAverageDeviation(subspectrum, querySpectrum, 0, 0, this.shiftTol);
                 if ((matchFactor != null) && (matchFactor <= this.matchFactorThrs) && Matcher.matchSpectra(subspectrum, querySpectrum, 0, 0, this.shiftTol).isFullyAssigned(0)) {
-                    resultPreSearch2.add(document);
+                    resultPresearch2.add(document);
                 }
             }
-            resultPreSearch.addAll(resultPreSearch2);
+            resultPresearch.addAll(resultPresearch2);
         }
-        this.sscLibrary.extend(resultPreSearch);
+        this.sscLibrary.extend(resultPresearch);
         System.out.println("extension done!!!");
         this.tm.stop();
         System.out.println("--> time needed: " + this.tm.getResult() + " s");
