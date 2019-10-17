@@ -57,7 +57,7 @@ public class MultiplicitySectionsBuilder {
         this.init();
     }
     
-    public HashMap<String, ArrayList<Integer>> getMultiplicitySections(final Spectrum spectrum) throws CDKException {
+    public HashMap<String, ArrayList<Integer>> buildMultiplicitySections(final Spectrum spectrum) throws CDKException {
         final HashMap<String, ArrayList<Integer>> multSections = new HashMap<>();
         // init
         for (final String mult : this.multiplicities) {
