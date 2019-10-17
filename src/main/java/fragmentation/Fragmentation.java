@@ -21,12 +21,10 @@ import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
-import parallel.ParallelTasks;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
-import java.util.concurrent.Callable;
 
 
 public class Fragmentation {
@@ -49,17 +47,30 @@ public class Fragmentation {
      * @see Fragmentation#buildSSCs(IAtomContainer, Spectrum, Assignment, int)
      */
     public static SSCLibrary buildSSCLibrary(final HashMap<Integer, Object[]> SSCComponentsSet, final int maxSphere, final int nThreads) throws InterruptedException {
+
         final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
-        final ArrayList<Callable<Boolean>> callables = new ArrayList<>();
-        // add all task to do
-        for (final int index: SSCComponentsSet.keySet()) {
-            callables.add(() -> sscLibrary.extend(Fragmentation.buildSSCs((IAtomContainer) SSCComponentsSet.get(index)[0], (Spectrum) SSCComponentsSet.get(index)[1], (Assignment) SSCComponentsSet.get(index)[2], maxSphere)));
-        }
-        ParallelTasks.processTasks(callables, inserted -> {
-            if(!inserted){
-                System.err.println(" -> could not insert a SSC");
+        for (final int index : SSCComponentsSet.keySet()){
+            try {
+                sscLibrary.extend(Fragmentation.buildSSCs((IAtomContainer) SSCComponentsSet.get(index)[0], (Spectrum) SSCComponentsSet.get(index)[1], (Assignment) SSCComponentsSet.get(index)[2], maxSphere));
+            } catch (CDKException e) {
+                e.printStackTrace();
             }
-        }, nThreads);
+        }
+
+//        final SSCLibrary sscLibrary2 = new SSCLibrary(nThreads);
+//        final ConcurrentLinkedQueue<SSC> builtSSCs = new ConcurrentLinkedQueue<>();
+//        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
+//        // add all task to do
+//        for (final int index: SSCComponentsSet.keySet()) {
+//            callables.add(() -> Fragmentation.buildSSCs((IAtomContainer) SSCComponentsSet.get(index)[0], (Spectrum) SSCComponentsSet.get(index)[1], (Assignment) SSCComponentsSet.get(index)[2], maxSphere));
+//        }
+//        ParallelTasks.processTasks(callables, sscLibraryTemp -> builtSSCs.addAll(sscLibraryTemp.getSSCs()), nThreads);
+//        System.out.println("\nparallel: " + sscLibrary2.getSSCCount());
+//        sscLibrary2.extend(builtSSCs);
+//        System.out.println(" parallel: " + sscLibrary2.getSSCCount());
+//        System.out.println(" parallel: " + sscLibrary2.getSSCCount());
+//        System.out.println(" parallel: " + sscLibrary2.getSSCCount() + "\n");
+
 
         return sscLibrary;
     }
