@@ -12,14 +12,15 @@
 package model;
 
 import casekit.NMR.dbservice.NMRShiftDB;
-import com.google.gson.JsonParser;
+import casekit.NMR.model.Signal;
 import com.mongodb.client.MongoCollection;
+import conversion.Converter;
 import fragmentation.Fragmentation;
 import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
 import start.TimeMeasurement;
 
-import java.io.*;
+import java.io.FileNotFoundException;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -50,7 +51,7 @@ public final class SSCLibrary {
     }
     
     /**
-     * Instanciates a new object of this class.
+     * Instantiates a new object of this class.
      *
      * @param nThreads number of threads to use for parallelization
      */
@@ -92,74 +93,69 @@ public final class SSCLibrary {
         
         return true;
     }
-    
-    public void exportToJSONFile(final String pathToJSON) throws IOException {
+
+    /**
+     * Stores this SSC library in JSON format into a file.
+     *
+     * @param pathToJSONFile
+     *
+     * @see Converter#SSCLibraryToJSONFile(SSCLibrary, String)
+     */
+    public boolean exportToJSONFile(final String pathToJSONFile) {
         final TimeMeasurement tm = new TimeMeasurement();
-        System.out.println("Now storing SSC library into JSON file \"" + pathToJSON + "\"...");
+        System.out.println("Now storing SSC library into JSON file \"" + pathToJSONFile + "\"...");
         tm.start();
-
-        final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToJSON));
-        long sscCounter = 0;
-        String json;
-        bw.write("{");
-        bw.newLine();
-        for (final SSC ssc : this.getSSCs()) {
-            json = SSCConverter.SSCToJSON(ssc);
-            bw.write(json.substring(1, json.length() - 1));
-            if(sscCounter < this.getSSCCount() - 1){
-                bw.write(",");
-            }
-            bw.newLine();
-            bw.flush();
-
-            sscCounter++;
+        if(!Converter.SSCLibraryToJSONFile(this, pathToJSONFile)){
+            return false;
         }
-
-        bw.write("}");
-        bw.close();
-
         tm.stop();
         System.out.println("--> time needed: " + tm.getResult() + " s");
         System.out.println("-> SSC library stored into JSON file");
+
+        return true;
+
+//        return Converter.SSCLibraryToJSONFile(this, pathToJSONFile);
     }
+
+
     
     /**
      * Imports a SSC library from a JSON file. All current SSC will be
      * deleted.
      *
-     * @param pathToJSON JSON file containing ths SSC library
+     * @param pathToJSONFile JSON file containing ths SSC library
      *
-     * @throws java.lang.InterruptedException
-     * @throws java.io.FileNotFoundException
-     * 
      * @see #removeAll() 
      * @see #extend(String)
      */
-    public void buildFromJSON(final String pathToJSON) throws InterruptedException, FileNotFoundException  {
+    public boolean importFromJSON(final String pathToJSONFile) {
         this.removeAll();
 
         final TimeMeasurement tm = new TimeMeasurement();
         System.out.println("-> importing SSC library from JSON file...");
         tm.start();
-
-        this.extend(pathToJSON);
-
+        if(!this.extend(pathToJSONFile)){
+            tm.stop();
+            return false;
+        }
         System.out.println("-> SSC library imported from JSON file!!!");
         tm.stop();
         System.out.println("--> time needed: " + tm.getResult() + " s");
         System.out.println("--> SSC library size:\t" + this.getSSCCount());
+
+        return true;
     }
     
     /**
      * Creates a SSC library from a given NMRShiftDB SDF via fragmentation of
      * each structure and each of its atoms as individual starting point 
-     * (central atom). All current SSC will be deleted.
+     * (central atom). All current SSCs will be deleted.
      * Signals shifts outlier in each SSC will be removed, see {@link SSC#removeSignalShiftsOutlier()}.
      *
      * @param pathToNMRShiftDB path to NMRShiftDB SDF
      * @param property property string of spectrum to use, 
      * e.g. "Spectrum 13C 0"
-     * @param maxSphere maximum number of spheres in fragmention
+     * @param maxSphere maximum number of spheres in fragmentation
      *
      * @throws FileNotFoundException
      * @throws CDKException
@@ -183,9 +179,8 @@ public final class SSCLibrary {
             System.out.println("--> time needed: " + tm.getResult() + " s");
             System.out.println("-> #SSC in SSC library: " + this.getSSCCount());
         }
-
         System.out.println("Building SSC done!!!");
-        System.out.println("Removing signal shifts oulier");
+        System.out.println("Removing signal shifts outlier");
         tm.start();
         this.removeSignalShiftsOutlier();
         tm.stop();
@@ -197,6 +192,8 @@ public final class SSCLibrary {
      *
      * @param sscLibrary SSC library with SSCs to add to this library
      *
+     * @see #getSSCs()
+     * @see #extend(Collection)
      */
     public boolean extend(final SSCLibrary sscLibrary) {
         return this.extend(sscLibrary.getSSCs());
@@ -205,13 +202,14 @@ public final class SSCLibrary {
     /**
      * Extends this SSC library by all SSC from given second one.
      *
-     * @param sscCollection collection with SSCs to add to this library
-     *
+     * @param collection collection with SSCs to add to this library
      * @return true if all SSCs in collection could be added
+     * 
+     * @see #insert(SSC, boolean)
      */
-    public boolean extend(final Collection<SSC> sscCollection){
+    private boolean extendBySSCs(final Collection<SSC> collection){
         // no further parallelization needed because insert() method will block anyway
-        for (final SSC ssc : sscCollection) {
+        for (final SSC ssc : collection) {
             if (ssc != null) {
                 if (!this.insert(ssc, false)) {
                     System.err.println(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
@@ -230,46 +228,27 @@ public final class SSCLibrary {
     /**
      * Extends this SSC library by SSC stored in a JSON file.
      *
-     * @param pathToJSON path to JSON file containing SSC
+     * @param pathToJSONFile path to JSON file containing SSC
      * library
      *
      * @return
-     * @throws java.io.FileNotFoundException
      */
-    public boolean extend(final String pathToJSON) throws FileNotFoundException, InterruptedException {
-        final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
-        final BufferedReader br = new BufferedReader(new FileReader(pathToJSON));
-        final JsonParser jsonParser = new JsonParser();
-
-        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
-        // add all task to do
-        br.lines().forEach( line -> {
-            if((line.trim().length() > 1) || (!line.trim().startsWith("{") && !line.trim().endsWith("}"))){
-                final StringBuilder sscInJSON = new StringBuilder();
-                if(line.endsWith(",")){
-                    sscInJSON.append(line, 0, line.length() - 1);
-                } else {
-                    sscInJSON.append(line);
-                }
-                try {
-                    callables.add(() -> SSCConverter.JSONToSSC(jsonParser.parse(sscInJSON.substring(sscInJSON.toString().indexOf("{"))).getAsJsonObject().toString()));
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
-        return this.extend(convertedSSCs);
+    public boolean extend(final String pathToJSONFile) {
+        try {
+            return this.extend(Converter.JSONFileToSSCLibrary(pathToJSONFile, this.nThreads));
+        } catch (InterruptedException | FileNotFoundException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     /**
      * Checks whether a SSC with same structural properties already exists.
-     * This is based on HOSE code comparisons and hydrogen counts in last sphere. </br>
-     * If the attached hydrogens in last sphere differ, then two SSC are not considered to be the same.
      *
      * @param ssc
      * @return true if there already exists a SSC with same structural properties
      *
+     * @see #findSSC(SSC)
      */
     public boolean containsSSC(final SSC ssc) {
         return this.findSSC(ssc) != null;
@@ -277,8 +256,9 @@ public final class SSCLibrary {
 
     /**
      * Returns a SSC with same structural properties which already exists.
-     * This is based on HOSE code comparisons and hydrogen counts in last sphere. </br>
-     * If the attached hydrogens in last sphere differ, then two SSC are not considered to be the same.
+     * This is based on HOSE code comparisons and hydrogen counts in last sphere as well as multiplicities. </br>
+     * If the attached hydrogens in last sphere or the multiplicities in both subspectra differ,
+     * then two SSC are not considered to be the same.
      *
      * @param ssc
      * @return index in this SSC library if there is already a SSC entry, otherwise null
@@ -288,9 +268,36 @@ public final class SSCLibrary {
         if(!this.HOSECodeLookupTable.containsKey(ssc.getAsHOSECode())){
             return null;
         }
+        SSC sscInLibrary;
+        Signal signalSSC, signalSSCInLibrary;
+        boolean valid;
         for (final long sscIndexInLibrary : this.getHOSECodeLookupTable().get(ssc.getAsHOSECode())){
-            if(Arrays.equals(this.getSSC(sscIndexInLibrary).getAttachedHydrogensInOuterSphere(), ssc.getAttachedHydrogensInOuterSphere())){
-                return sscIndexInLibrary;
+            sscInLibrary = this.getSSC(sscIndexInLibrary);
+            // as pre-filter
+            if(Arrays.equals(sscInLibrary.getAttachedHydrogensCountsInOuterSphere(), ssc.getAttachedHydrogensCountsInOuterSphere())
+                    && Arrays.equals(sscInLibrary.getMultiplicitiesInOuterSphere(), ssc.getMultiplicitiesInOuterSphere())){
+
+                valid = true;
+                for (int i = 0; i < ssc.getAtomCount(); i++) {
+                    signalSSC = ssc.getSubspectrum().getSignal(ssc.getAssignments().getIndex(0, i));
+                    signalSSCInLibrary = sscInLibrary.getSubspectrum().getSignal(sscInLibrary.getAssignments().getIndex(0, i));
+                    // if both signals exist and the multiplicities are not equal
+                    if((signalSSC != null) && (signalSSCInLibrary != null)
+                            && !signalSSC.getMultiplicity().equals(signalSSCInLibrary.getMultiplicity())){
+                        valid = false;
+                        break;
+                    } else {
+                        // if one signal exists and the other not then something is wrong
+                        if(((signalSSC == null) && (signalSSCInLibrary != null)) || ((signalSSC != null) && (signalSSCInLibrary == null))){
+                            valid = false;
+                            break;
+                        }
+                        // else: atoms which have no signal
+                    }
+                }
+                if(valid){
+                    return sscIndexInLibrary;
+                }
             }
         }
 
@@ -312,13 +319,9 @@ public final class SSCLibrary {
     public boolean containsSSC(final long sscIndex){
         return this.map.containsKey(sscIndex);
     }    
-    
-    public LinkedHashMap<Long, SSC> getMap(){
-        return this.map;
-    }
-    
+
     /**
-     * Returns the SSC indices of this SSC library.
+     * Returns the SSC indices of this SSC library (in order).
      *
      * @return
      */
@@ -351,7 +354,10 @@ public final class SSCLibrary {
         }
         final Long sscIndexInLibrary = this.findSSC(ssc);
         if(sscIndexInLibrary != null){
-            this.getSSC(sscIndexInLibrary).addShiftsFromSubspectrum(ssc.getSubspectrum());
+            if(!this.getSSC(sscIndexInLibrary).addShiftsFromSubspectrum(ssc.getSubspectrum())){
+                System.err.println(" -> could not add subspectrum to already existing SSC with HOSE code: " + ssc.getAsHOSECode());
+                return false;
+            }
 
             return true;
         }
@@ -373,7 +379,7 @@ public final class SSCLibrary {
         sscToInsert.setIndex(this.getSSCCount());
         this.HOSECodeLookupTable.get(HOSECode).add(sscToInsert.getIndex());
         this.map.put(sscToInsert.getIndex(), sscToInsert);
-        
+
         return true;
     }
 
@@ -414,30 +420,28 @@ public final class SSCLibrary {
         return sscLibrary;
     }
 
-
-
-
-
-
-
-
-
     /**
-     * Writes this SSC library into a MongoDB collection.
+     * Inserts this SSC library into a MongoDB collection.
      *
      * @param collection
-     * @throws java.lang.InterruptedException
      *
      */
-    public void exportToMongoDB(final MongoCollection<Document> collection) throws InterruptedException{
+    public boolean exportToMongoDB(final MongoCollection<Document> collection) {
         final List<Document> convertedDocuments = Collections.synchronizedList(new ArrayList<>());
         // add all task to do
         final ArrayList<Callable<Document>> callables = new ArrayList<>();
         for (final SSC ssc : this.getSSCs()) {
-            callables.add(() -> SSCConverter.SSCToDocument(ssc));
+            callables.add(() -> Converter.SSCToDocument(ssc));
         }
-        SSCConverter.convertSSCsToDocuments(callables, convertedDocuments, this.nThreads);
-        collection.insertMany(convertedDocuments);
+        try {
+            Converter.convertSSCsToDocuments(callables, convertedDocuments, this.nThreads);
+            collection.insertMany(convertedDocuments);
+
+            return true;
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     /**
@@ -446,79 +450,79 @@ public final class SSCLibrary {
      * deleted.
      *
      * @param collection
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
-     * @throws java.lang.InterruptedException
      *
-     * @deprecated
      */
-    public void buildFromMongoDB(final MongoCollection<Document> collection) throws CDKException, CloneNotSupportedException, InterruptedException  {
+    public boolean importFromMongoDB(final MongoCollection<Document> collection) {
         this.removeAll();
-        this.extend(collection);
-    }
 
-    /**
-     * Imports a SSC library by documents from a MongoDB
-     * containing the SSC information.  All current SSC will be
-     * deleted.
-     *
-     * @param documents
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
-     * @throws java.lang.InterruptedException
-     *
-     * @deprecated
-     */
-    public void buildFromMongoDB(final ArrayList<Document> documents) throws CDKException, CloneNotSupportedException, InterruptedException  {
-        this.removeAll();
-        this.extend(documents);
+        final TimeMeasurement tm = new TimeMeasurement();
+        System.out.println("-> importing SSC library from JSON file...");
+        tm.start();
+        if(!this.extend(collection)){
+            tm.stop();
+            return false;
+        }
+        System.out.println("-> SSC library imported from JSON file!!!");
+        tm.stop();
+        System.out.println("--> time needed: " + tm.getResult() + " s");
+        System.out.println("--> SSC library size:\t" + this.getSSCCount());
+
+        return true;
     }
 
     /**
      * Extends this SSC library by documents from a MongoDB collection
      * containing the SSC information.
-     * All SSC in this library object whose indices also exist in the
-     * given map will be replaced.
      *
      * @param collection
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
-     * @throws java.lang.InterruptedException
      *
-     * @deprecated
      */
-    public void extend(final MongoCollection<Document> collection) throws InterruptedException  {
-        final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
-        final ArrayList<Callable<SSC>> callables = new ArrayList<>();
-        // add all task to do
-        for (final Document sscDocument : collection.find()) {
-            callables.add(() -> SSCConverter.DocumentToSSC(sscDocument));
-        }
-        SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
-        this.extend(convertedSSCs);
+    public boolean extend(final MongoCollection<Document> collection) {
+        return this.extend(Converter.convertMongoDBCollectionToDocuments(collection));
     }
 
     /**
-     * Extends this SSC library by documents from a MongoDB
-     * containing the SSC information.
-     * All SSC in this library object whose indices also exist in the
-     * given map will be replaced.
+     * Extends this SSC library by documents which contain the SSC information.
      *
      * @param documents
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
-     * @throws java.lang.InterruptedException
      *
      */
-    public void extend(final ArrayList<Document> documents) throws InterruptedException  {
+    private boolean extendByDocuments(final Collection<Document> documents) {
         final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
         final ArrayList<Callable<SSC>> callables = new ArrayList<>();
         // add all task to do
-        for (final Document sscDocument : documents) {
-            callables.add(() -> SSCConverter.DocumentToSSC(sscDocument));
+        for (final Document document : documents) {
+            callables.add(() -> Converter.DocumentToSSC(document));
         }
-        SSCConverter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
-        this.extend(convertedSSCs);
+        try {
+            Converter.convertDocumentsToSSCs(callables, convertedSSCs, this.nThreads);
+            return this.extend(convertedSSCs);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Extends this SSC library by a collection containing either SSCs ({@link model.SSC}) or Documents ({@link org.bson.Document}) with SSC information.
+     *
+     * @param collection
+     *
+     * @see model.SSC
+     * @see org.bson.Document
+     */
+    public boolean extend(final Collection<?> collection) {
+        if (collection.isEmpty()){
+            return true;
+        }
+        final Object firstElement = collection.iterator().next();
+        if(firstElement instanceof SSC){
+            return this.extendBySSCs((Collection<SSC>) collection);
+        } else if(firstElement instanceof Document){
+            return this.extendByDocuments((Collection<Document>) collection);
+        }
+        System.err.println("object type in collection is not supported!!!");
+        return false;
     }
 
     //    /**
