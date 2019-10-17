@@ -9,7 +9,7 @@
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package model;
+package conversion;
 
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
@@ -17,20 +17,24 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mongodb.client.MongoCollection;
+import model.ExtendedConnectionMatrix;
+import model.SSC;
+import model.SSCLibrary;
 import org.bson.Document;
 import parallel.ParallelTasks;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
+import java.io.*;
+import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 /**
  *
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
-public class SSCConverter {
+public class Converter {
 
     private final static Gson GSON = new GsonBuilder().setLenient().create();
     
@@ -96,26 +100,11 @@ public class SSCConverter {
     }
 
     public static String SSCToJSON(final SSC ssc){
-        return new Document().append(String.valueOf(ssc.getIndex()), SSCConverter.SSCToDocument(ssc)).toJson();
+        return new Document().append(String.valueOf(ssc.getIndex()), Converter.SSCToDocument(ssc)).toJson();
     }
 
     /**
-     * Converts documents to SSC in parallel and adds them to the given collection.
-     * 
-     * @param callables 
-     * @param collection
-     * @param nThreads
-     * @throws InterruptedException
-     * 
-     * @see ParallelTasks#processTasks(Collection, Consumer, int) 
-     * @see Collection#add(Object)
-     */
-    public static void convertDocumentsToSSCs(final Collection<Callable<SSC>> callables, final Collection<SSC> collection, final int nThreads) throws InterruptedException {
-        ParallelTasks.processTasks(callables, collection::add, nThreads);
-    }
-
-    /**
-     * Converts SSC to documents in parallel and adds them to the given collection.
+     * Converts SSCs to documents in parallel and adds them to the given collection.
      *
      * @param callables
      * @param collection
@@ -129,4 +118,103 @@ public class SSCConverter {
         ParallelTasks.processTasks(callables, collection::add, nThreads);
     }
 
+    /**
+     * Converts documents to SSCs in parallel and adds them to the given collection.
+     *
+     * @param callables
+     * @param collection
+     * @param nThreads
+     * @throws InterruptedException
+     *
+     * @see ParallelTasks#processTasks(Collection, Consumer, int)
+     * @see Collection#add(Object)
+     */
+    public static void convertDocumentsToSSCs(final Collection<Callable<SSC>> callables, final Collection<SSC> collection, final int nThreads) throws InterruptedException {
+        ParallelTasks.processTasks(callables, collection::add, nThreads);
+    }
+
+    /**
+     * Adds documents from a MongoDB collection into a collection and returns it.
+     *
+     * @param collection
+     *
+     */
+    public static Collection<Document> convertMongoDBCollectionToDocuments(final MongoCollection<Document> collection) {
+        final Collection<Document> documents = new ArrayList<>();
+        for (final Document document : collection.find()) {
+            documents.add(document);
+        }
+        return documents;
+    }
+
+    /**
+     * Stores this SSC library into a string in JSON format.
+     *
+     * @return this SSC library as JSON string
+     */
+    public static String SSCLibraryToJSON(final SSCLibrary sscLibrary){
+        final StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("{");
+        stringBuilder.append("\n");
+        String json;
+        long sscCounter = 0;
+        for (final SSC ssc : sscLibrary.getSSCs()) {
+            json = Converter.SSCToJSON(ssc);
+            stringBuilder.append(json.substring(1, json.length() - 1));
+            if(sscCounter < sscLibrary.getSSCCount() - 1){
+                stringBuilder.append(",");
+            }
+            stringBuilder.append("\n");
+
+            sscCounter++;
+        }
+        stringBuilder.append("}");
+
+        return stringBuilder.toString();
+    }
+
+    public static boolean SSCLibraryToJSONFile(final SSCLibrary sscLibrary, final String pathToJSONFile) {
+        try {
+            final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToJSONFile));
+            bw.write(Converter.SSCLibraryToJSON(sscLibrary));
+            bw.close();
+
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public static SSCLibrary JSONToSSCLibrary(final String json, final int nThreads) throws InterruptedException, FileNotFoundException {
+        return Converter.JSONToSSCLibrary(new BufferedReader(new StringReader(json)), nThreads);
+    }
+
+    public static SSCLibrary JSONFileToSSCLibrary(final String pathToJSONFile, final int nThreads) throws InterruptedException, FileNotFoundException {
+        return Converter.JSONToSSCLibrary(new BufferedReader(new FileReader(pathToJSONFile)), nThreads);
+    }
+
+    private static SSCLibrary JSONToSSCLibrary(final BufferedReader br, final int nThreads) throws InterruptedException, FileNotFoundException {
+        final ConcurrentLinkedQueue<SSC> convertedSSCs = new ConcurrentLinkedQueue<>();
+        final JsonParser jsonParser = new JsonParser();
+        final List<Callable<SSC>> callables = Collections.synchronizedList(new ArrayList<>());
+        // add all task to do
+        br.lines().parallel().forEach( line -> {
+            if((line.trim().length() > 1) || (!line.trim().startsWith("{") && !line.trim().endsWith("}"))){
+                final StringBuilder sscInJSON = new StringBuilder();
+                if(line.endsWith(",")){
+                    sscInJSON.append(line, 0, line.length() - 1);
+                } else {
+                    sscInJSON.append(line);
+                }
+                callables.add(() -> Converter.JSONToSSC(jsonParser.parse(sscInJSON.substring(sscInJSON.toString().indexOf("{"))).getAsJsonObject().toString()));
+            }
+        });
+        Converter.convertDocumentsToSSCs(callables, convertedSSCs, nThreads);
+
+        final SSCLibrary sscLibrary = new SSCLibrary(nThreads);
+        sscLibrary.extend(convertedSSCs);
+
+        return sscLibrary;
+    }
 }
