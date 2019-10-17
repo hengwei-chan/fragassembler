@@ -201,7 +201,7 @@ public final class SSCRanker {
         for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
             callables.add(() -> {
 
-                // pre-search: quick check for too much signals in at least one of the existing multiplicities
+                // pre-search: quick check for too much signals in at least one of the existing multiplicities;
                 // could save time in comparison to Matcher.matchSpectra() (below) which has to search for matches (combinations)
                 // @TODO might be to extend via comparisons in single sections of each multiplicity
                 final HashMap<String, ArrayList<Integer>> multiplicitySectionsSSCSubspectrum = this.sscLibrary.getSSC(sscIndex).getMultiplicitySections();
