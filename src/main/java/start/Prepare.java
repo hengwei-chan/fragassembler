@@ -47,7 +47,7 @@ public class Prepare {
             sscLibrary.buildFromNMRShiftDB(this.pathToNMRShiftDB, Start.SPECTRUM_PROPERTY, this.maxSphere);
             sscLibrary.exportToJSONFile(pathToJSON);
         } else {
-            sscLibrary.buildFromJSON(pathToJSON);
+            sscLibrary.importFromJSON(pathToJSON);
         }
 
         return sscLibrary;
