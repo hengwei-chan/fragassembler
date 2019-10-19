@@ -57,7 +57,6 @@ public class Fragmentation {
             }
         }
 
-//        final SSCLibrary sscLibrary2 = new SSCLibrary(nThreads);
 //        final ConcurrentLinkedQueue<SSC> builtSSCs = new ConcurrentLinkedQueue<>();
 //        final ArrayList<Callable<SSCLibrary>> callables = new ArrayList<>();
 //        // add all task to do
@@ -65,11 +64,7 @@ public class Fragmentation {
 //            callables.add(() -> Fragmentation.buildSSCs((IAtomContainer) SSCComponentsSet.get(index)[0], (Spectrum) SSCComponentsSet.get(index)[1], (Assignment) SSCComponentsSet.get(index)[2], maxSphere));
 //        }
 //        ParallelTasks.processTasks(callables, sscLibraryTemp -> builtSSCs.addAll(sscLibraryTemp.getSSCs()), nThreads);
-//        System.out.println("\nparallel: " + sscLibrary2.getSSCCount());
-//        sscLibrary2.extend(builtSSCs);
-//        System.out.println(" parallel: " + sscLibrary2.getSSCCount());
-//        System.out.println(" parallel: " + sscLibrary2.getSSCCount());
-//        System.out.println(" parallel: " + sscLibrary2.getSSCCount() + "\n");
+//        sscLibrary.extend(builtSSCs);
 
 
         return sscLibrary;
@@ -116,7 +111,7 @@ public class Fragmentation {
             if (ssc == null) {
                 return new SSCLibrary();
             }
-            sscLibrary.insert(ssc, false);
+            sscLibrary.insert(ssc);
         }
        
         return sscLibrary;
