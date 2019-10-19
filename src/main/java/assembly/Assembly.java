@@ -21,7 +21,6 @@ import hose.model.ConnectionTree;
 import hose.model.ConnectionTreeNode;
 import match.Match;
 import model.SSC;
-import model.SSCLibrary;
 import org.openscience.cdk.aromaticity.Kekulization;
 import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IBond;
@@ -128,7 +127,7 @@ public class Assembly {
         return overlapsInSpheres;
     }
     
-    public static ConcurrentHashMap<String, SSC> assemble(final long nStarts, final int nThreads, final SSCLibrary rankedSSCLibrary, final int minMatchingSphereCount,
+    public static ConcurrentHashMap<String, SSC> assemble(final long nStarts, final int nThreads, final ArrayList<SSC> rankedSSCList, final int minMatchingSphereCount,
             final Spectrum querySpectrum, final double thrsMatchFactor, final double shiftTol, final String pathToOutputsFolder, final long querySpectrumCounter) throws InterruptedException {
 
 //        long counter = 0;
@@ -282,7 +281,7 @@ public class Assembly {
         for (int i = 0; i < nStarts; i++) {
             final int j = i;
             callables.add(() -> {
-                return Assembly.assembleDFS(rankedSSCLibrary, j, minMatchingSphereCount, querySpectrum, thrsMatchFactor, shiftTol, pathToOutputsFolder, querySpectrumCounter);
+                return Assembly.assembleDFS(rankedSSCList, j, minMatchingSphereCount, querySpectrum, thrsMatchFactor, shiftTol, pathToOutputsFolder, querySpectrumCounter);
 //                return Assembly.assembleBFS(rankedSSCLibrary, j, minMatchingSphereCount, querySpectrum, thrsMatchFactor, shiftTol, pathToOutputsFolder, querySpectrumCounter);
 //                return Assembly.assembleSeq(rankedSSCLibrary, j, minMatchingSphereCount, querySpectrum, thrsMatchFactor, shiftTol);
             });
@@ -292,7 +291,7 @@ public class Assembly {
         return solutions;
     }
 
-    public static HashMap<String, SSC> assembleBFS(final SSCLibrary rankedSSCLibrary, final long startSSCIndex, final int minMatchingSphereCount, 
+    public static HashMap<String, SSC> assembleBFS(final ArrayList<SSC> rankedSSCList, final long startSSCIndex, final int minMatchingSphereCount,
             final Spectrum querySpectrum, final double thrsMatchFactor, final double shiftTol, final String pathToOutputsFolder, final long querySpectrumCounter) throws Exception {
 
         final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToOutputsFolder + "/results_" + querySpectrumCounter + "_temp_" + startSSCIndex + ".smiles"));
@@ -301,7 +300,7 @@ public class Assembly {
         final HashMap<String, SSC> solutions = new HashMap<>();
         SSC intermediate, newIntermediate, ssc2;
         // notice: clone (!!!) the SSC contents only; don't use the object (reference) itself because of modifications
-        intermediate = rankedSSCLibrary.getSSC(startSSCIndex).getClone();
+        intermediate = rankedSSCList.get((int) startSSCIndex).getClone(false);
         // check whether the current SSC is already a final SSC
         if (Assembly.isFinalSSC(intermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
             structureAsSMILES = smilesGenerator.create(intermediate.getSubstructure());
@@ -330,17 +329,17 @@ public class Assembly {
         
         
         while (!intermediates.isEmpty()) {            
-            intermediate = ((SSC) intermediates.peek()[0]).getClone();
+            intermediate = ((SSC) intermediates.peek()[0]).getClone(false);
             path = new LinkedHashSet<>((LinkedHashSet<Long>) intermediates.peek()[1]);
             System.out.println("--> for path: " + path + "\nnext ssc index: " + (Collections.max(path) + 1));
-            System.out.println("--> ranked SSC indices: " + rankedSSCLibrary.getSSCIndices());
-            for (long i = Collections.max(path) + 1; i < rankedSSCLibrary.getSSCCount(); i++) {
+//            System.out.println("--> ranked SSC indices: " + rankedSSCLibrary.getSSCIndices());
+            for (long i = Collections.max(path) + 1; i < rankedSSCList.size(); i++) {
 
-                ssc2 = rankedSSCLibrary.getSSC(i);
+                ssc2 = rankedSSCList.get((int) i);
 
                 System.out.println("\n\n-------------------------------- " + path + ", " + i + " --------------------------------");                                
 
-                newIntermediate = Assembly.assemblyCore(intermediate.getClone(), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
+                newIntermediate = Assembly.assemblyCore(intermediate.getClone(false), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
                 if (newIntermediate == null) {
                     continue;
                 }
@@ -384,7 +383,7 @@ public class Assembly {
     }
 
 
-    public static HashMap<String, SSC> assembleDFS(final SSCLibrary rankedSSCLibrary, final long startSSCIndex, final int minMatchingSphereCount,
+    public static HashMap<String, SSC> assembleDFS(final ArrayList<SSC> rankedSSCList, final long startSSCIndex, final int minMatchingSphereCount,
                                                    final Spectrum querySpectrum, final double thrsMatchFactor, final double shiftTol, final String pathToOutputsFolder, final long querySpectrumCounter) throws Exception {
 
         final BufferedWriter bw = new BufferedWriter(new FileWriter(pathToOutputsFolder + "/results_" + querySpectrumCounter + "_temp_" + startSSCIndex + ".smiles"));
@@ -394,12 +393,12 @@ public class Assembly {
         SSC intermediate, newIntermediate;
 
         // swap the start SSC with the first SSC
-        final ArrayList<SSC> rankedSSCs = new ArrayList<>(rankedSSCLibrary.getSSCs());
+        final ArrayList<SSC> rankedSSCs = new ArrayList<>(rankedSSCList);
         rankedSSCs.add(0, rankedSSCs.get((int) startSSCIndex));
         rankedSSCs.remove((int) startSSCIndex + 1);
 
         // notice: clone (!!!) the SSC contents only; don't use the object (reference) itself because of modifications
-        intermediate = rankedSSCs.get(0).getClone();
+        intermediate = rankedSSCs.get(0).getClone(false);
         // check whether the current SSC is already a final SSC
         if (Assembly.isFinalSSC(intermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
             structureAsSMILES = smilesGenerator.create(intermediate.getSubstructure());
@@ -420,12 +419,13 @@ public class Assembly {
             return solutions;
         }
 
-        LinkedHashSet<Long> path = new LinkedHashSet<>(), newPath;
-        path.add((long) 0);
         // create stack with initial state for DFS
         final Stack<Object[]> intermediates = new Stack<>();
-        intermediates.push(new Object[]{intermediate, path, intermediate.getAsHOSECode()});
-        String HOSECode;
+        LinkedHashSet<Long> path = new LinkedHashSet<>(), newPath;
+        path.add((long) 0);
+        int addedAtomsCount = 0, addedBondsCount = 0;
+        intermediates.push(new Object[]{path, addedAtomsCount, addedBondsCount});
+        // HashMap to store invalid extensions
         final HashMap<String, HashSet<Long>> invalidExtensions = new HashMap<>();
 
         long j = 1, i;
@@ -433,11 +433,9 @@ public class Assembly {
             i = j;
 //            for (long i = j; i < rankedSSCs.size(); i++) {
             while (i < rankedSSCs.size()){
-                intermediate = ((SSC) intermediates.peek()[0]).getClone();
-//                path = new LinkedHashSet<>((LinkedHashSet<Long>) intermediates.peek()[1]);
-                path = (LinkedHashSet<Long>) intermediates.peek()[1];
-                HOSECode = (String) intermediates.peek()[2];
-                System.out.println("\n\n--> for path: " + path + "\n -> " + HOSECode + "\nnext ssc index: " + i + "/" + (rankedSSCs.size() - 1));
+                path = (LinkedHashSet<Long>) intermediates.peek()[0];
+//                intermediate = ((SSC) intermediates.peek()[1]).getClone(false);
+                System.out.println("\n\n--> for path: " + path + "\n -> " + intermediate.getAsHOSECode() + "\nnext ssc index: " + i + "/" + (rankedSSCs.size() - 1));
 
                 System.out.println("-------------------------------- " + startSSCIndex + "_" + path + ", " + i + " --------------------------------");
 
@@ -461,7 +459,7 @@ public class Assembly {
                     break;
                 }
 
-                newIntermediate = Assembly.assemblyCore(intermediate, rankedSSCs.get((int) i), querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
+                newIntermediate = Assembly.assemblyCore(intermediate.getClone(false), rankedSSCs.get((int) i), querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
                 if ((newIntermediate == null)){
                     if(!invalidExtensions.containsKey(intermediate.getAsHOSECode())){
                         invalidExtensions.put(intermediate.getAsHOSECode(), new HashSet<>());
@@ -471,6 +469,9 @@ public class Assembly {
                     i++;
                     continue;
                 }
+                addedAtomsCount = newIntermediate.getAtomCount() - intermediate.getAtomCount();
+                addedBondsCount = newIntermediate.getBondCount() - intermediate.getBondCount();
+                intermediate = newIntermediate;
 
 //                try {
 //                    Utils.generatePicture(newIntermediate.getSubstructure(), "results/temp_" + startSSCIndex + "_" + path + "_" + i + ".png");
@@ -478,22 +479,22 @@ public class Assembly {
 //
 //                }
 
-                if (Assembly.isFinalSSC(newIntermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
-                    structureAsSMILES = smilesGenerator.create(newIntermediate.getSubstructure());
+                if (Assembly.isFinalSSC(intermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
+                    structureAsSMILES = smilesGenerator.create(intermediate.getSubstructure());
                     if (!solutions.containsKey(structureAsSMILES)) {
-                        solutions.put(structureAsSMILES, newIntermediate);
+                        solutions.put(structureAsSMILES, intermediate);
                         System.out.println("--> new solution found!!! -> " + solutions.size() + " -> " + structureAsSMILES);
-                        System.out.println("-> atom count: " + newIntermediate.getAtomCount() + ", bond count: " + newIntermediate.getBondCount());
+                        System.out.println("-> atom count: " + intermediate.getAtomCount() + ", bond count: " + intermediate.getBondCount());
                         System.out.println("-> query spectrum:\t" + querySpectrum.getShifts(0));
                         System.out.println("-> equivalences:\t" + querySpectrum.getEquivalences());
-                        System.out.println("-> pred. spectrum:\t" + newIntermediate.getSubspectrum().getShifts(0));
-                        System.out.println("-> equivalences:\t" + newIntermediate.getSubspectrum().getEquivalences());
+                        System.out.println("-> pred. spectrum:\t" + intermediate.getSubspectrum().getShifts(0));
+                        System.out.println("-> equivalences:\t" + intermediate.getSubspectrum().getEquivalences());
 
                         bw.append(structureAsSMILES);
                         bw.newLine();
                         bw.flush();
 
-//                        return solutions;
+                        return solutions;
                     }
                     i++;
                     continue;
@@ -501,13 +502,28 @@ public class Assembly {
                 // valid and extended SSC built but not final, so add it to stack
                 newPath = new LinkedHashSet<>(path);
                 newPath.add(i);
-                intermediates.push(new Object[]{newIntermediate, newPath, newIntermediate.getAsHOSECode()});
+                intermediates.push(new Object[]{newPath, addedAtomsCount, addedBondsCount});
 
                 i++;
             }
             if(!intermediates.isEmpty()){
-                j = Collections.max((LinkedHashSet<Long>) intermediates.peek()[1]) + 1;
+                j = Collections.max((LinkedHashSet<Long>) intermediates.peek()[0]) + 1;
+                addedAtomsCount = (int) intermediates.peek()[1];
+                addedBondsCount = (int) intermediates.peek()[2];
                 intermediates.pop();
+
+                // first: remove the bonds
+                for (int k = 0; k < addedBondsCount; k++) {
+                    intermediate.removeLastBond();
+                }
+                // second: remove the signals, assignments and atoms
+                for (int k = 0; k < addedAtomsCount; k++) {
+                    intermediate.removeLastAtom();
+                }
+                intermediate.update();
+
+
+//                System.gc();
             }
         }
         bw.close();
@@ -552,7 +568,7 @@ public class Assembly {
             // for each overlapping atom pairs in SSC1 and SSC2 in sphere (maybe in a certain order?)
             for (int k = 0; k < overlapsHOSECodeInSphere.size(); k++) {
                 // reset ssc1Extended to original SSC1
-                ssc1Extended = ssc1.getClone();
+                ssc1Extended = ssc1.getClone(false);
                 atomMappings = new HashMap<>();
 //                System.out.println("\n -> k: " + k);
 //                System.out.println(" -> HOSE code maps:" + Arrays.toString(overlapsHOSECodeInSphere.get(k)));
@@ -611,7 +627,7 @@ public class Assembly {
                     
                     childNodesToAppend = completeConnectionTreeSSC2.getNode(nodeKeyInCompleteConnectionTreeSSC2).getChildNodes();
                     for (final ConnectionTreeNode childNodeToAppend : childNodesToAppend){
-                        ssc1ExtendedBackup = ssc1Extended.getClone();
+                        ssc1ExtendedBackup = ssc1Extended.getClone(false);
 //                        System.out.println(" --> to append from SSC2: " + childNodeToAppend.getKey());
 
                         // if ring closure node
@@ -619,7 +635,7 @@ public class Assembly {
                             continue;
                         }
 
-                        bondToAdd = completeConnectionTreeSSC2.getBond(nodeKeyInCompleteConnectionTreeSSC2, childNodeToAppend.getKey()).clone();
+                        bondToAdd = completeConnectionTreeSSC2.getBond(nodeKeyInCompleteConnectionTreeSSC2, childNodeToAppend.getKey());
                         if(!Utils.isValidBondAddition(ssc1Extended.getSubstructure(), nodeKeyInCompleteConnectionTreeSSC1, bondToAdd)){
                           continue;
                         }
@@ -640,7 +656,7 @@ public class Assembly {
                         // if one child node extends already existing or just invalid atoms then skip this child node and set to backup SSC
                         // @TODO what if valid the "right" extension comes after a "wrong" one? (i.e. at a ring node where to extend to the "outside")
                         if(!Assembly.isValidSubspectrum(ssc1Extended.getSubspectrum(), querySpectrum, shiftTol, thrsMatchFactor)){
-                            ssc1Extended = ssc1ExtendedBackup.getClone();
+                            ssc1Extended = ssc1ExtendedBackup.getClone(false);
                             continue;
                         }
 //                        System.out.println("predicted spectrum temp.: " + ssc1Extended.getSubspectrum().getShifts(0));
@@ -674,17 +690,9 @@ public class Assembly {
                                             }
                                         }
                                     }
-                                    if((nodeSSC1 != null) && (parentNodeSSC1 != null)
-                                            && (ssc1Extended.getSubstructure().getBond(
-                                            ssc1Extended.getSubstructure().getAtom(nodeSSC1.getKey()),
-                                            ssc1Extended.getSubstructure().getAtom(parentNodeSSC1.getKey())) == null)){
-                                        bondToAdd = ssc2.getSubstructure().getBond(ssc2.getSubstructure().getAtom(nodeKeyInSubtreeSSC2), ssc2.getSubstructure().getAtom(parentNodeSSC2.getKey())).clone();
-                                        if(Utils.isValidBondAddition(ssc1Extended.getSubstructure(), nodeSSC1.getKey(), bondToAdd)
-                                                && Utils.isValidBondAddition(ssc1Extended.getSubstructure(), parentNodeSSC1.getKey(), bondToAdd)){
-                                            bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(nodeSSC1.getKey()), 0);
-                                            bondToAdd.setAtom(ssc1Extended.getSubstructure().getAtom(parentNodeSSC1.getKey()), 1);
-                                            ssc1Extended.getSubstructure().addBond(bondToAdd);
-                                        }
+                                    if((nodeSSC1 != null) && (parentNodeSSC1 != null)){
+                                        bondToAdd = ssc2.getBond(nodeKeyInSubtreeSSC2, parentNodeSSC2.getKey());
+                                        ssc1Extended.addBond(bondToAdd, nodeSSC1.getKey(), parentNodeSSC1.getKey());
                                     }
                                 }
                             }
@@ -710,9 +718,9 @@ public class Assembly {
 //                    System.out.println("assignments : " + ssc1Extended.getAssignments().getAssignments(0) + "\n");
 //                    System.out.println("unsaturated atoms: " + ssc1Extended.getUnsaturatedAtomIndices());
 
-                    validSSCExtensions.add(new Object[]{ssc1Extended.getClone(), new HashMap<>(atomMappings)});
+                    validSSCExtensions.add(new Object[]{ssc1Extended.getClone(false), new HashMap<>(atomMappings)});
                 } else {
-                    invalidSSCExtensions.add(new Object[]{ssc1Extended.getClone(), new HashMap<>(atomMappings)});
+                    invalidSSCExtensions.add(new Object[]{ssc1Extended.getClone(false), new HashMap<>(atomMappings)});
                 }
             }
 //            System.out.println("\n");
@@ -777,51 +785,46 @@ public class Assembly {
         return (SSC) validSSCExtensions.get(0)[0];
     }
 
-    public static SSC extendSSC(final SSC ssc1, final SSC ssc2, final ConnectionTree connectionTreeToAddSSC, final Integer parentAtomIndexToLinkSSC1, final IBond bondToLinkSSC2){
+    public static SSC extendSSC(final SSC ssc1, final SSC ssc2, final ConnectionTree connectionTreeToAddSSC, final Integer parentAtomIndexToLinkSSC1, final IBond bondToLinkSSC2) throws CloneNotSupportedException {
 
         final SSC ssc1Backup;
         try {
-            ssc1Backup = ssc1.getClone();
+            ssc1Backup = ssc1.getClone(false);
         } catch (Exception e) {
             return ssc1;
         }
-        ConnectionTreeNode nodeInSphere;
+
+        final HashMap<Integer, Integer> insertedAtomMappings = new HashMap<>();
         // add root atom of connection tree to add to SSC1 and link it via a given bond to parent atom in SSC1
-        if(!ssc1.addAtom(connectionTreeToAddSSC.getRootNode().getAtom(), bondToLinkSSC2, parentAtomIndexToLinkSSC1)){
+        Signal signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, connectionTreeToAddSSC.getRootNode().getKey()));
+        if(!ssc1.addAtom(connectionTreeToAddSSC.getRootNode().getAtom(), bondToLinkSSC2, parentAtomIndexToLinkSSC1, signalToAddSSC2)){
             return ssc1Backup;
         }
-        Signal signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, connectionTreeToAddSSC.getRootNode().getKey()));
-        if(signalToAddSSC2 != null){
-            if(!ssc1.addSignal(signalToAddSSC2, ssc1.getAtomCount() - 1)){
-                return ssc1Backup;
-            }
-        }
-
+        insertedAtomMappings.put(connectionTreeToAddSSC.getRootNode().getKey(), ssc1.getAtomCount() - 1);
+        ArrayList<ConnectionTreeNode> nodesInSphere;
+        ConnectionTreeNode nodeInSphere;
+        IBond bondToAdd;
         // for each sphere: add the atom which is stored as node to atom container and set bonds between parent nodes
         for (int s = 1; s <= connectionTreeToAddSSC.getMaxSphere(); s++) {
             // first add all atoms and its parents (previous sphere only) to structure
-            for (int i = 0; i < connectionTreeToAddSSC.getNodesInSphere(s).size(); i++) {
-                nodeInSphere = connectionTreeToAddSSC.getNodesInSphere(s).get(i);
+            nodesInSphere = connectionTreeToAddSSC.getNodesInSphere(s);
+            for (int i = 0; i < nodesInSphere.size(); i++) {
+                nodeInSphere = nodesInSphere.get(i);
                 if(nodeInSphere.isRingClosureNode()){
                    continue;
                 }
                 for (final ConnectionTreeNode parentNode : nodeInSphere.getParentNodes()){
                     if(parentNode.getSphere() < nodeInSphere.getSphere()){
-                        if(!ssc1.addAtom(nodeInSphere.getAtom(), connectionTreeToAddSSC.getBond(parentNode.getKey(), nodeInSphere.getKey()), ssc1.getSubstructure().indexOf(parentNode.getAtom()))){
+                        bondToAdd = connectionTreeToAddSSC.getBond(parentNode.getKey(), nodeInSphere.getKey());
+                        signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeInSphere.getKey()));
+                        if(!ssc1.addAtom(nodeInSphere.getAtom(), bondToAdd, insertedAtomMappings.get(parentNode.getKey()), signalToAddSSC2)){
                             return ssc1Backup;
                         }
-                        signalToAddSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, nodeInSphere.getKey()));
-                        if(signalToAddSSC2 != null){
-                            if(!ssc1.addSignal(signalToAddSSC2, ssc1.getAtomCount() - 1)){
-                                return ssc1Backup;
-                            }
-                        }
+                        insertedAtomMappings.put(nodeInSphere.getKey(), ssc1.getAtomCount() - 1);
                     }
                 }
             }
         }
-        ConnectionTreeNode parentNode;
-        IBond bondToParent;
         for (int s = 1; s <= connectionTreeToAddSSC.getMaxSphere(); s++) {
             // and as second add the remaining bonds (ring closures) to structure
             for (int i = 0; i < connectionTreeToAddSSC.getNodesInSphere(s).size(); i++) {
@@ -830,12 +833,7 @@ public class Assembly {
                     continue;
                 }
                 for (int j = 0; j < nodeInSphere.getParentNodes().size(); j++) {
-                    parentNode = nodeInSphere.getParentNodes().get(j);
-                    if(ssc1.getSubstructure().getBond(ssc1.getSubstructure().getAtom(ssc1.getSubstructure().indexOf(nodeInSphere.getAtom())),
-                            ssc1.getSubstructure().getAtom(ssc1.getSubstructure().indexOf(parentNode.getAtom()))) == null){
-                        bondToParent = nodeInSphere.getBondsToParents().get(j);
-                        ssc1.addBond(bondToParent, ssc1.getSubstructure().indexOf(nodeInSphere.getAtom()), ssc1.getSubstructure().indexOf(parentNode.getAtom()));
-                    }
+                    ssc1.addBond(nodeInSphere.getBondsToParents().get(j), insertedAtomMappings.get(nodeInSphere.getKey()), insertedAtomMappings.get(nodeInSphere.getParentNodes().get(j).getKey()));
                 }
             }
         }
@@ -844,7 +842,7 @@ public class Assembly {
     }
 
     /**
-     * @param rankedSSCLibrary
+     * @param rankedSSCList
      * @param startSSCIndex
      * @param minMatchingSphereCount
      * @param querySpectrum
@@ -855,7 +853,7 @@ public class Assembly {
      *
      * @deprecated
      */
-    public static HashMap<String, SSC> assembleSeq(final SSCLibrary rankedSSCLibrary, final long startSSCIndex, final int minMatchingSphereCount,
+    public static HashMap<String, SSC> assembleSeq(final ArrayList<SSC> rankedSSCList, final long startSSCIndex, final int minMatchingSphereCount,
                                                    final Spectrum querySpectrum, final double thrsMatchFactor, final double shiftTol) throws Exception {
 
         final SmilesGenerator smilesGenerator = new SmilesGenerator(SmiFlavor.Absolute);
@@ -863,8 +861,8 @@ public class Assembly {
         final HashMap<String, SSC> solutions = new HashMap<>();
         SSC intermediate, backupSSC, ssc2, startSSC;
         // notice: clone (!!!) the SSC contents only; don't use the object (reference) itself because of modifications
-        startSSC = rankedSSCLibrary.getSSC(startSSCIndex).getClone();
-        intermediate = startSSC.getClone();
+        startSSC = rankedSSCList.get((int) startSSCIndex).getClone(false);
+        intermediate = startSSC.getClone(false);
         intermediate.setIndex(startSSCIndex);
         // check whether the current SSC is already a final SSC
         if (Assembly.isFinalSSC(intermediate, querySpectrum, shiftTol, thrsMatchFactor)) {
@@ -886,17 +884,17 @@ public class Assembly {
             return solutions;
         }
 
-        for (long i = 0; i < rankedSSCLibrary.getSSCCount(); i++) {
+        for (long i = 0; i < rankedSSCList.size(); i++) {
             if(i == startSSCIndex){
                 continue;
             }
 
             System.out.println("\n\n-------------------------------- " + startSSCIndex + ", " + i + " --------------------------------");
-            backupSSC = intermediate.getClone();
-            ssc2 = rankedSSCLibrary.getSSC(i);
-            intermediate = Assembly.assemblyCore(intermediate.getClone(), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
+            backupSSC = intermediate.getClone(false);
+            ssc2 = rankedSSCList.get((int) i);
+            intermediate = Assembly.assemblyCore(intermediate.getClone(false), ssc2, querySpectrum, minMatchingSphereCount, shiftTol, thrsMatchFactor);
             if (intermediate == null) {
-                intermediate = backupSSC.getClone();
+                intermediate = backupSSC.getClone(false);
                 intermediate.setIndex(startSSCIndex);
                 continue;
             }
@@ -919,7 +917,7 @@ public class Assembly {
                     System.out.println("-> equivalences:\t" + intermediate.getSubspectrum().getEquivalences());
                 }
 
-                intermediate = startSSC.getClone();//backupSSC1.getClone();
+                intermediate = startSSC.getClone(false);//backupSSC1.getClone();
                 intermediate.setIndex(startSSCIndex);
 //                continue;
             }
