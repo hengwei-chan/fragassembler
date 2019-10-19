@@ -121,14 +121,14 @@ public class Match {
         if(node1.isRingClosureNode() || node2.isRingClosureNode()){
             return null;
         }
-        if(((node1.getAtom().getHybridization() != null) && (node2.getAtom().getHybridization() != null))
-                && (node1.getAtom().getHybridization().compareTo(node2.getAtom().getHybridization()) != 0)){
+        if(((node1.getAtom().getImplicitHydrogenCount() != null) && (node2.getAtom().getImplicitHydrogenCount() != null))
+                && (node1.getAtom().getImplicitHydrogenCount().compareTo(node2.getAtom().getImplicitHydrogenCount()) != 0)){
             return false;
         }
-        if(((node1.getAtom().getCharge() != null) && (node2.getAtom().getCharge() != null))
-                && (node1.getAtom().getCharge().compareTo(node2.getAtom().getCharge()) != 0)){
-            return false;
-        }
+//        if(((node1.getAtom().getHybridization() != null) && (node2.getAtom().getHybridization() != null))
+//                && (node1.getAtom().getHybridization().compareTo(node2.getAtom().getHybridization()) != 0)){
+//            return false;
+//        }
         final Signal signalSSC1 = ssc1.getSubspectrum().getSignal(ssc1.getAssignments().getIndex(0, node1.getKey()));
         final Signal signalSSC2 = ssc2.getSubspectrum().getSignal(ssc2.getAssignments().getIndex(0, node2.getKey()));
         if((signalSSC1 == null) || (signalSSC2 == null)){
