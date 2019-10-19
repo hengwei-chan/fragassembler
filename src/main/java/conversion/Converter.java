@@ -17,6 +17,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
 import com.mongodb.client.MongoCollection;
 import model.ExtendedConnectionMatrix;
 import model.SSC;
@@ -45,13 +46,10 @@ public class Converter {
                 GSON.fromJson(((Document) sscDocument.get("substructure")).toJson(), ExtendedConnectionMatrix.class).toAtomContainer(),
                 sscDocument.getInteger("rootAtomIndex"),
                 sscDocument.getInteger("maxSphere"),
-//                GSON.fromJson(((withDocument) sscDocument.get("HOSECodes")).toJson(), HashMap.class),
-//                GSON.fromJson(((withDocument) sscDocument.get("connectionTrees")).toJson(), HashMap.class),
-//                GSON.fromJson(((withDocument) sscDocument.get("attachedHydrogensInOuterSphere")).toJson(), ArrayList.class),
-                GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(), HashMap.class),
-                GSON.fromJson(((Document) sscDocument.get("shiftsRanges")).toJson(), HashMap.class),
-                sscDocument.get("unsaturatedAtomIndices", ArrayList.class),
-                GSON.fromJson(((Document) sscDocument.get("multiplicitySections")).toJson(), HashMap.class)
+                GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(),  new TypeToken<HashMap<Integer, ArrayList<Double>>>(){}.getType()),
+                GSON.fromJson(((Document) sscDocument.get("shiftsRanges")).toJson(),  new TypeToken<HashMap<Integer, Double[]>>(){}.getType()),
+                GSON.fromJson(((Document) sscDocument.get("unsaturatedAtomIndices")).toJson(),  new TypeToken<ArrayList<Integer>>(){}.getType()),
+                GSON.fromJson(((Document) sscDocument.get("multiplicitySections")).toJson(), new TypeToken<HashMap<String, ArrayList<Integer>>>(){}.getType())
                 );
         ssc.setIndex(sscDocument.getLong("index"));
 
@@ -67,10 +65,8 @@ public class Converter {
         document.append("maxSphere", ssc.getMaxSphere());
         document.append("rootAtomIndex", ssc.getRootAtomIndex());
         document.append("index", ssc.getIndex());
-//        document.append("HOSECodes", withDocument.parse(GSON.toJson(GSON.toJsonTree(ssc.getHOSECodes(), HashMap.class))));
-//        document.append("connectionTrees", withDocument.parse(GSON.toJson(GSON.toJsonTree(ssc.getConnectionTrees(), HashMap.class))));
         document.append("shifts", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShifts(), HashMap.class))));
-        document.append("shiftsRanges", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShiftsRanges(), HashMap.class))));
+        document.append("shiftsRanges", Document.parse(GSON.toJson(GSON.toJsonTree(ssc.getShiftsMinMax(), HashMap.class))));
         document.append("unsaturatedAtomIndices", ssc.getUnsaturatedAtomIndices());
         document.append("multiplicitySections", ssc.getMultiplicitySections());
 
@@ -85,14 +81,10 @@ public class Converter {
                 GSON.fromJson(jsonObject.get("substructure"), ExtendedConnectionMatrix.class).toAtomContainer(),
                 jsonObject.get("rootAtomIndex").getAsInt(),
                 jsonObject.get("maxSphere").getAsInt(),
-//                GSON.fromJson(jsonObject.get("HOSECodes"), HashMap.class),
-//                GSON.fromJson(jsonObject.get("connectionTrees"), HashMap.class),
-//                GSON.fromJson(jsonObject.get("attachedHydrogensInOuterSphere"), ArrayList.class),
-                GSON.fromJson(jsonObject.get("shifts"), HashMap.class),
-                GSON.fromJson(jsonObject.get("shiftsRanges"), HashMap.class),
-                GSON.fromJson(jsonObject.get("unsaturatedAtomIndices"), ArrayList.class),
-                GSON.fromJson(jsonObject.get("multiplicitySections"), HashMap.class)
-
+                GSON.fromJson(jsonObject.get("shifts"), new TypeToken<HashMap<Integer, ArrayList<Double>>>(){}.getType()),
+                GSON.fromJson(jsonObject.get("shiftsRanges"), new TypeToken<HashMap<Integer, Double[]>>(){}.getType()),
+                GSON.fromJson(jsonObject.get("unsaturatedAtomIndices"), new TypeToken<ArrayList<Integer>>(){}.getType()),
+                GSON.fromJson(jsonObject.get("multiplicitySections"), new TypeToken<HashMap<String, ArrayList<Integer>>>(){}.getType())
         );
         ssc.setIndex(jsonObject.get("index").getAsJsonObject().get("$numberLong").getAsLong());
 
