@@ -16,6 +16,8 @@ import casekit.NMR.Utils;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Signal;
 import casekit.NMR.model.Spectrum;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import hose.HOSECodeBuilder;
 import hose.model.ConnectionTree;
 import hose.model.ConnectionTreeNode;
@@ -36,7 +38,9 @@ import java.util.HashMap;
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
 public final class SSC {
-    
+
+    private static final MultiplicitySectionsBuilder MULTIPLICITY_SECTIONS_BUILDER = new MultiplicitySectionsBuilder();;
+
     private final Spectrum subspectrum;
     private final Assignment assignment;
     private final IAtomContainer substructure;
@@ -46,36 +50,29 @@ public final class SSC {
     // stores all shifts for each single atom in SSC and its HOSE code
     private final HashMap<Integer, String> HOSECodes;
     private final HashMap<Integer, ArrayList<Double>> shifts;
-    private final HashMap<Integer, Double[]> shiftsRanges;
+    private final HashMap<Integer, Double[]> shiftsMinMax;
     private Integer[] attachedHydrogensCountsInOuterSphere;
     private String[] multiplicitiesInOuterSphere;
     // connection tree holding the spherical information about the substructure
     private final HashMap<Integer, ConnectionTree> connectionTrees;
-    /**
-     * stores all atom indices for each occurring atom type in substructure
-     *
-     * @deprecated
-     */
-    private HashMap<String, ArrayList<Integer>> atomTypeIndices;
     // for pre-search: map of multiplicities as keys consisting 
-    // of section indices with occurrency in this SSC
+    // of section indices with occurrence in this SSC
     private HashMap<String, ArrayList<Integer>> multiplicitySections;
-    private final MultiplicitySectionsBuilder multiplicitySectionsBuilder;
     // index to use in SSC library
     private long index;
     // indices of open-sphere (unsaturated) atoms of substructure
     private final ArrayList<Integer> unsaturatedAtomIndices;    
     //public final static int MIN_LIMIT = -20, MAX_LIMIT = 260, STEP_SIZE = 5, STEPS = (MAX_LIMIT - MIN_LIMIT) / STEP_SIZE; // ppm range from -20 to 260 in 5 ppm steps
 
+
     /**
-     *
      * @param subspectrum
      * @param assignment
-     * @param substructure  
+     * @param substructure
      * @param rootAtomIndex
      * @param maxSphere
-     * @throws CDKException
-     * @throws java.lang.CloneNotSupportedException
+     *
+     * @throws Exception
      */
     public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere) throws Exception {
         this.subspectrum = subspectrum.getClone();
@@ -85,63 +82,99 @@ public final class SSC {
         this.maxSphere = maxSphere;
         this.HOSECodes = new HashMap<>();
         this.shifts = new HashMap<>();
-        this.shiftsRanges = new HashMap<>();
+        this.shiftsMinMax = new HashMap<>();
         this.initSignalShifts();
         this.connectionTrees = new HashMap<>();
         this.index = -1;
         this.unsaturatedAtomIndices = new ArrayList<>();
         this.multiplicitySections = new HashMap<>();      
-        this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
         this.update();
     }
 
+
     /**
-     * Constructor to "restore" a SSC object from given inputs without recreating/calculating every class members.
+     * Constructor to "restore" a SSC object from given inputs without creating/calculating every class members again.
      *
      * @param subspectrum
      * @param assignment
      * @param substructure
      * @param rootAtomIndex
      * @param maxSphere
-     * @param multiplicitySections
+//     * @param HOSECodes
+//     * @param connectionTrees
      * @param shifts
-     * @param shiftsRanges
+     * @param shiftsMinMax
      * @param unsaturatedAtomIndices
-     * @throws Exception
+     * @param multiplicitySections
+//     * @param attachedHydrogensCountsInOuterSphere
+//     * @param multiplicitiesInOuterSphere
+     *
      */
-//    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, String> HOSECodes, final HashMap<Integer, ConnectionTree> connectionTrees, final int[] attachedHydrogensInOuterSphere, final HashMap<Integer, ArrayList<Double>> shifts, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
-    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere, final HashMap<Integer, ArrayList<Double>> shifts, final HashMap<Integer, Double[]> shiftsRanges, final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections) throws Exception {
-        this.subspectrum = subspectrum;
-        this.assignment = assignment;
-        this.substructure = substructure;
+    public SSC(final Spectrum subspectrum, final Assignment assignment, final IAtomContainer substructure, final int rootAtomIndex, final int maxSphere,
+//               final HashMap<Integer, String> HOSECodes, final HashMap<Integer, ConnectionTree> connectionTrees,
+               final HashMap<Integer, ArrayList<Double>> shifts, final HashMap<Integer, Double[]> shiftsMinMax,
+               final ArrayList<Integer> unsaturatedAtomIndices, final HashMap<String, ArrayList<Integer>> multiplicitySections
+//               final Integer[] attachedHydrogensCountsInOuterSphere, final String[] multiplicitiesInOuterSphere
+            ) throws Exception {
+        this.subspectrum = subspectrum.getClone();
+        this.assignment = assignment.clone();
+        this.substructure = substructure.clone();
         this.rootAtomIndex = rootAtomIndex;
         this.maxSphere = maxSphere;
-//        this.HOSECodes = HOSECodes;
-//        this.connectionTrees = connectionTrees;
-//        this.attachedHydrogensInOuterSphere = attachedHydrogensInOuterSphere;
+
+        // Deep clones
+        final Gson gson = new Gson();
+//        this.HOSECodes = gson.fromJson(gson.toJson(HOSECodes), HashMap.class);
+//        this.connectionTrees = gson.fromJson(gson.toJson(connectionTrees), new TypeToken<HashMap<Integer, ConnectionTree>>(){}.getType());
         this.HOSECodes = new HashMap<>();
         this.connectionTrees = new HashMap<>();
         this.updateHOSECodes();
 
-        this.shifts = shifts;
-        this.shiftsRanges = shiftsRanges;
-        this.unsaturatedAtomIndices = unsaturatedAtomIndices;
-        this.multiplicitySections = multiplicitySections;
+        this.shifts = gson.fromJson(gson.toJson(shifts), new TypeToken<HashMap<Integer, ArrayList<Double>>>(){}.getType());
+        this.shiftsMinMax = gson.fromJson(gson.toJson(shiftsMinMax), new TypeToken<HashMap<Integer, Double[]>>(){}.getType());
+        this.unsaturatedAtomIndices = gson.fromJson(gson.toJson(unsaturatedAtomIndices), new TypeToken<ArrayList<Integer>>(){}.getType());
+        this.multiplicitySections = gson.fromJson(gson.toJson(multiplicitySections), new TypeToken<HashMap<String, ArrayList<Integer>>>(){}.getType());;
+
+        this.updateAttachedHydrogensCountAndMultiplicitiesInOuterSphere();
+//        this.attachedHydrogensCountsInOuterSphere = attachedHydrogensCountsInOuterSphere;
+//        this.multiplicitiesInOuterSphere = multiplicitiesInOuterSphere;
 
         this.index = -1;
-        this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
     }
 
     /**
-     * Returns a full clone of that SSC, with one exception: The index of the
-     * SSC clone is set to default value (-1).
+     * Returns a full clone of that SSC. The index of the SSC clone is set to default value (-1). <br>
+     * {@code reduceShifts == false} means that all class members are deep cloned, incl. all shifts in shifts lists.
+     * The opposite ({@code reduceShifts == true}) means that the lists of shifts for each signal
+     * will only contain one (!!!) shift: the previously set representative shift.
+     *
+     * @param reduceShifts indicates whether a all shifts in shift lists should be reduced
      *
      * @return
      * @throws CDKException
-     * @throws java.lang.CloneNotSupportedException
+     * 
+     * @see #SSC(Spectrum, Assignment, IAtomContainer, int, int, HashMap, HashMap, ArrayList, HashMap)
      */
-    public SSC getClone() throws Exception {
-      return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere);//, this.shifts, this.unsaturatedAtomIndices, this.multiplicitySections);
+    public SSC getClone(final boolean reduceShifts) throws Exception {
+        if(reduceShifts){
+            final HashMap<Integer, ArrayList<Double>> reducedShifts = new HashMap<>();
+            for (int i = 0; i < this.getSubspectrum().getSignalCount(); i++) {
+                reducedShifts.put(i, new ArrayList<>());
+                reducedShifts.get(i).add(this.getSubspectrum().getShift(i, 0));
+            }
+
+            return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere,
+//                this.HOSECodes, this.connectionTrees,
+                    reducedShifts, this.shiftsMinMax, this.unsaturatedAtomIndices, this.multiplicitySections
+//                this.attachedHydrogensCountsInOuterSphere, this.multiplicitiesInOuterSphere
+            );
+        }
+
+        return new SSC(this.subspectrum, this.assignment, this.substructure, this.rootAtomIndex, this.maxSphere,
+//                    this.HOSECodes, this.connectionTrees,
+                this.shifts, this.shiftsMinMax, this.unsaturatedAtomIndices, this.multiplicitySections
+//                    this.attachedHydrogensCountsInOuterSphere, this.multiplicitiesInOuterSphere
+        );
     }
 
     /**
@@ -164,10 +197,10 @@ public final class SSC {
      */
     public void update() throws CDKException {
         AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(this.substructure);
-//        this.updateAtomTypeIndices();
         this.updateUnsaturatedAtomIndices();
         this.updateHOSECodes();
         this.updateMultiplicitySections();
+        this.updateAttachedHydrogensCountAndMultiplicitiesInOuterSphere();
     }
 
     private void updateAttachedHydrogensCountAndMultiplicitiesInOuterSphere(){
@@ -231,18 +264,42 @@ public final class SSC {
         for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
             this.shifts.put(i, new ArrayList<>());
             this.shifts.get(i).add(this.subspectrum.getSignal(i).getShift(0));
-            this.shiftsRanges.put(i, new Double[]{this.subspectrum.getSignal(i).getShift(0), this.subspectrum.getSignal(i).getShift(0)});
+            this.shiftsMinMax.put(i, new Double[]{this.subspectrum.getSignal(i).getShift(0), this.subspectrum.getSignal(i).getShift(0)});
         }
     }
 
-    public boolean addAtom(final IAtom atom, final IBond bond, final int parentAtomIndexinSubstructure){
-        if (!Utils.checkIndexInAtomContainer(this.substructure, parentAtomIndexinSubstructure)) {
+//    public boolean addAtom(final IAtom atom, final IBond bond, final int parentAtomIndexinSubstructure){
+//        return this.addAtom(atom, bond, parentAtomIndexinSubstructure, null);
+//    }
+
+    public boolean addAtom(final IAtom atom, final IBond bond, final int parentAtomIndexinSubstructure, final Signal signal){
+        if (!this.hasAtom(parentAtomIndexinSubstructure)) {
             return false;
         }
-        this.substructure.addAtom(atom);
+        final IAtom atomClone;
+        try {
+            atomClone = atom.clone();
+            this.getSubstructure().addAtom(atomClone);
+        } catch (CloneNotSupportedException e) {
+            return false;
+        }
 
-        if(!this.addBond(bond, parentAtomIndexinSubstructure, this.substructure.indexOf(atom))){
-            this.substructure.removeAtom(atom);
+        boolean removeInsertedAtom = false;
+        if(!this.addBond(bond, parentAtomIndexinSubstructure, this.getSubstructure().indexOf(atomClone))){
+            removeInsertedAtom = true;
+        }
+        if(!removeInsertedAtom && (signal != null)){
+            try {
+                if(!this.getSubspectrum().addSignal(signal.getClone())
+                        || !this.getAssignments().addAssignment(new int[]{this.getAtomCount() - 1})){
+                    removeInsertedAtom = true;
+                }
+            } catch (Exception e) {
+                removeInsertedAtom = true;
+            }
+        }
+        if(removeInsertedAtom){
+            this.getSubstructure().removeAtom(atomClone);
 
             return false;
         }
@@ -250,36 +307,99 @@ public final class SSC {
         return true;
     }
 
-    public boolean addBond(final IBond bond, final int parentAtomIndexInSubstructure1, final int parentAtomIndexInSubstructure2){
-        if (!Utils.checkIndexInAtomContainer(this.substructure, parentAtomIndexInSubstructure1)
-                || !Utils.checkIndexInAtomContainer(this.substructure, parentAtomIndexInSubstructure2)) {
+    public boolean addBond(final IBond bond, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2){
+        if(this.hasBond(atomIndexInSubstructure1, atomIndexInSubstructure2)){
             return false;
         }
-        final IBond bondToAdd = new Bond(this.substructure.getAtom(parentAtomIndexInSubstructure1), this.substructure.getAtom(parentAtomIndexInSubstructure2), bond.getOrder());
+        IAtom atom1 = this.getAtom(atomIndexInSubstructure1);
+        IAtom atom2 = this.getAtom(atomIndexInSubstructure2);
+        if((atom1 == null) || (atom2 == null)){
+            return false;
+        }
+        final IBond bondToAdd = new Bond(atom1, atom2, bond.getOrder());
         bondToAdd.setIsInRing(bond.isInRing());
         bondToAdd.setIsAromatic(bond.isAromatic());
 
-        if(!Utils.isValidBondAddition(this.substructure, parentAtomIndexInSubstructure1, bondToAdd)
-                || !Utils.isValidBondAddition(this.substructure, parentAtomIndexInSubstructure2, bondToAdd)){
+        if(!Utils.isValidBondAddition(this.getSubstructure(), atomIndexInSubstructure1, bondToAdd)
+                || !Utils.isValidBondAddition(this.getSubstructure(), atomIndexInSubstructure2, bondToAdd)){
             return false;
         }
-        this.substructure.addBond(bondToAdd);
+        this.getSubstructure().addBond(bondToAdd);
 
         return true;
     }
 
-    public boolean addSignal(final Signal newSignal, final int atomIndexInSubstructure){
-        if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
+    public boolean removeBond(final int atomIndexInSubstructure1, final int atomIndexInSubstructure2){
+        if (!this.hasBond(atomIndexInSubstructure1, atomIndexInSubstructure2)) {
             return false;
         }
-        if(newSignal == null){
-            return false;
-        }
-        this.subspectrum.addSignal(newSignal);
-        this.assignment.addAssignment(new int[]{atomIndexInSubstructure});
+        this.getSubstructure().removeBond(this.getBond(atomIndexInSubstructure1, atomIndexInSubstructure2));
 
         return true;
     }
+
+    public boolean removeLastBond(){
+        if(this.getBondCount() < 1){
+            return false;
+        }
+        this.getSubstructure().removeBond((this.getBondCount() - 1));
+
+        return true;
+    }
+
+    public IBond getBond(final int atomIndexInSubstructure1, final int atomIndexInSubstructure2){
+        if (!Utils.checkIndexInAtomContainer(this.getSubstructure(), atomIndexInSubstructure1)
+                || !Utils.checkIndexInAtomContainer(this.getSubstructure(), atomIndexInSubstructure2)) {
+            return null;
+        }
+        return this.getSubstructure().getBond(this.getSubstructure().getAtom(atomIndexInSubstructure1), this.getSubstructure().getAtom(atomIndexInSubstructure2));
+    }
+
+    public boolean hasBond(final int atomIndexInSubstructure1, final int atomIndexInSubstructure2){
+        return this.getBond(atomIndexInSubstructure1, atomIndexInSubstructure2) != null;
+    }
+
+    public boolean removeAtom(final int atomIndexInSubstructure){
+        if (!this.hasAtom(atomIndexInSubstructure)) {
+            return false;
+        }
+        this.getSubstructure().removeAtom(atomIndexInSubstructure);
+        final Integer signalIndex = this.getAssignments().getIndex(0, atomIndexInSubstructure);
+        if(signalIndex != null){
+            this.getSubspectrum().removeSignal(signalIndex);
+            this.getAssignments().removeAssignment(signalIndex);
+        }
+
+        return true;
+    }
+
+    public boolean removeLastAtom(){
+        return this.removeAtom((this.getAtomCount() - 1));
+    }
+
+    public IAtom getAtom(final int atomIndexInSubstructure){
+        if (!Utils.checkIndexInAtomContainer(this.getSubstructure(), atomIndexInSubstructure)) {
+            return null;
+        }
+        return this.getSubstructure().getAtom(atomIndexInSubstructure);
+    }
+
+    public boolean hasAtom(final int atomIndexInSubstructure){
+        return this.getAtom(atomIndexInSubstructure) != null;
+    }
+
+//    public boolean addSignal(final Signal newSignal, final int atomIndexInSubstructure){
+//        if (!Utils.checkIndexInAtomContainer(this.getSubstructure(), atomIndexInSubstructure)) {
+//            return false;
+//        }
+//        if(newSignal == null){
+//            return false;
+//        }
+//        this.subspectrum.addSignal(newSignal);
+//        this.assignment.addAssignment(new int[]{atomIndexInSubstructure});
+//
+//        return true;
+//    }
 
     public boolean addShiftsFromSubspectrum(final Spectrum subspectrum){
         // 1: check spectra dimensions and sizes
@@ -305,14 +425,14 @@ public final class SSC {
         //    and update the shift ranges (minimum, maximum)
         for (int i = 0; i < this.subspectrum.getSignalCount(); i++) {
             this.subspectrum.setShift(Utils.getMedian(this.shifts.get(i)), 0, i);
-            this.shiftsRanges.put(i, new Double[]{Collections.min(this.shifts.get(i)), Collections.max(this.shifts.get(i))});
+            this.shiftsMinMax.put(i, new Double[]{Collections.min(this.shifts.get(i)), Collections.max(this.shifts.get(i))});
         }
 
         return true;
     }
 
-    public HashMap<Integer, Double[]> getShiftsRanges(){
-        return this.shiftsRanges;
+    public HashMap<Integer, Double[]> getShiftsMinMax(){
+        return this.shiftsMinMax;
     }
 
     /**
@@ -375,20 +495,12 @@ public final class SSC {
     }
 
     /**
-     *
-     * @deprecated
-     */
-    private void updateAtomTypeIndices(){
-        this.atomTypeIndices = Utils.getAtomTypeIndices(this.substructure);
-    } 
-    
-    /**
      * Specified for carbons only -> still open.
      *
      * @throws org.openscience.cdk.exception.CDKException
      */
     private void updateMultiplicitySections() throws CDKException {
-        this.multiplicitySections = this.multiplicitySectionsBuilder.buildMultiplicitySections(this.subspectrum);
+        this.multiplicitySections = SSC.MULTIPLICITY_SECTIONS_BUILDER.buildMultiplicitySections(this.subspectrum);
     }    
 
     private boolean updateHOSECodes() throws CDKException {
@@ -537,15 +649,6 @@ public final class SSC {
     }
     public HashMap<Integer, ArrayList<Double>> getShifts(){
         return this.shifts;
-    }
-
-    /**
-     * @return
-     *
-     * @deprecated
-     */
-    public HashMap<String, ArrayList<Integer>> getAtomTypeIndices(){
-        return this.atomTypeIndices;
     }
     
     public HashMap<String, ArrayList<Integer>> getMultiplicitySections(){
