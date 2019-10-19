@@ -23,6 +23,7 @@ import start.TimeMeasurement;
 import java.io.FileNotFoundException;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -38,8 +39,8 @@ public final class SSCLibrary {
      * Holds all SSC entries as LinkedHashMap to keep them in input order. <br>
      * That is important for holding ranked SSCs in order in SSCRanker class.
      */
-    private final LinkedHashMap<Long, SSC> map;
-    private final HashMap<String, ArrayList<Long>> HOSECodeLookupTable;
+    private final ConcurrentHashMap<Long, SSC> map;
+    private final ConcurrentHashMap<String, ArrayList<Long>> HOSECodeLookupTable;
     private int nThreads;
     
     /**
@@ -56,8 +57,8 @@ public final class SSCLibrary {
      * @param nThreads number of threads to use for parallelization
      */
     public SSCLibrary(final int nThreads){
-        this.map = new LinkedHashMap<>();
-        this.HOSECodeLookupTable = new HashMap<>();
+        this.map = new ConcurrentHashMap<>();
+        this.HOSECodeLookupTable = new ConcurrentHashMap<>();
         this.nThreads = nThreads;
     }
 
@@ -72,7 +73,7 @@ public final class SSCLibrary {
      *
      */
     public HashMap<String, ArrayList<Long>> getHOSECodeLookupTable() {
-        return this.HOSECodeLookupTable;
+        return new HashMap<>(this.HOSECodeLookupTable);
     }
     
     public int getNThreads(){
@@ -173,7 +174,9 @@ public final class SSCLibrary {
         for (int m = 2; m <= maxSphere; m++) {
             System.out.println("Building SSC for " + m + "-spheres...");
             tm.start();
+
             this.extend(Fragmentation.buildSSCLibrary(NMRShiftDB.getSSCComponentsFromNMRShiftDB(pathToNMRShiftDB, property), m, this.nThreads));
+
             System.out.println("SSC for " + m + "-spheres build!!!");
             tm.stop();
             System.out.println("--> time needed: " + tm.getResult() + " s");
@@ -182,7 +185,9 @@ public final class SSCLibrary {
         System.out.println("Building SSC done!!!");
         System.out.println("Removing signal shifts outlier");
         tm.start();
+
         this.removeSignalShiftsOutlier();
+
         tm.stop();
         System.out.println("--> time needed: " + tm.getResult() + " s");
     }
@@ -205,13 +210,13 @@ public final class SSCLibrary {
      * @param collection collection with SSCs to add to this library
      * @return true if all SSCs in collection could be added
      * 
-     * @see #insert(SSC, boolean)
+     * @see #insert(SSC)
      */
     private boolean extendBySSCs(final Collection<SSC> collection){
         // no further parallelization needed because insert() method will block anyway
         for (final SSC ssc : collection) {
             if (ssc != null) {
-                if (!this.insert(ssc, false)) {
+                if (!this.insert(ssc)) {
                     System.err.println(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
                     try {
                         throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
@@ -309,12 +314,12 @@ public final class SSCLibrary {
     }
     
     public long getSSCCount(){
-        return this.map.size();
+        return this.map.mappingCount();
     }
-    
+
     public SSC getSSC(final long sscIndex){
-        return this.map.get(sscIndex);
-    } 
+        return this.getSSC(sscIndex);
+    }
     
     public boolean containsSSC(final long sscIndex){
         return this.map.containsKey(sscIndex);
@@ -343,12 +348,17 @@ public final class SSCLibrary {
      * Inserts a new SSC to this SSC library.
      *
      * @param ssc SSC to add to this library
-     * @param clone indicates whether SSCs to insert should be cloned beforehand
-     * @return false if the given SSC could not be cloned successfully
+//     * @param clone indicates whether SSCs to insert should be cloned beforehand ({@link model.SSC#getClone(boolean)})
+//     * @param reduceShifts used when {code clone == true} ; indicates whether the shift lists of each signal to be
+//     *                     reduced to the representative signal shift ({@link model.SSC#getClone(boolean)})
+//     *
+//     * @return false if the given SSC could not be cloned successfully
+     * @return false if given SSC is null
      * 
      * @see #findSSC(SSC)
+     * @see SSC#getClone(boolean)
      */
-    synchronized public boolean insert(final SSC ssc, final boolean clone) {
+    public boolean insert(final SSC ssc){//}, final boolean clone, final boolean reduceShifts) {
         if(ssc == null){
             return false;
         }
@@ -362,23 +372,25 @@ public final class SSCLibrary {
             return true;
         }
         final String HOSECode = ssc.getAsHOSECode();
-        if (!this.HOSECodeLookupTable.containsKey(HOSECode)) {
-            this.HOSECodeLookupTable.put(HOSECode, new ArrayList<>());
-        }
-        final SSC sscToInsert;
-        if(clone){
-            try {
-                sscToInsert = ssc.getClone();
-            } catch (Exception e) {
-                return false;
-            }
-        } else {
-            sscToInsert = ssc;
-        }
+        this.HOSECodeLookupTable.put(HOSECode, new ArrayList<>());
 
-        sscToInsert.setIndex(this.getSSCCount());
-        this.HOSECodeLookupTable.get(HOSECode).add(sscToInsert.getIndex());
-        this.map.put(sscToInsert.getIndex(), sscToInsert);
+//        final SSC sscToInsert;
+//        if(clone){
+//            try {
+//                sscToInsert = ssc.getClone(reduceShifts);
+//            } catch (Exception e) {
+//                return false;
+//            }
+//        } else {
+//            sscToInsert = ssc;
+//        }
+//        sscToInsert.setIndex(this.getSSCCount());
+//        this.HOSECodeLookupTable.get(HOSECode).add(sscToInsert.getIndex());
+//        this.map.put(sscToInsert.getIndex(), sscToInsert);
+
+        ssc.setIndex(this.getSSCCount());
+        this.HOSECodeLookupTable.get(HOSECode).add(ssc.getIndex());
+        this.map.put(ssc.getIndex(), ssc);
 
         return true;
     }
@@ -392,7 +404,7 @@ public final class SSCLibrary {
         }
     }
     
-    synchronized public boolean remove(final long sscIndex){
+    public boolean remove(final long sscIndex){
         if(!this.containsSSC(sscIndex)){
             return false;
         }
@@ -411,10 +423,10 @@ public final class SSCLibrary {
      *
      * @return
      */
-    public SSCLibrary getClone() {
+    public SSCLibrary getClone() throws Exception {
         final SSCLibrary sscLibrary = new SSCLibrary(this.nThreads);
         for (final long sscIndex : this.map.keySet()) {
-            sscLibrary.insert(this.getSSC(sscIndex), true);
+            sscLibrary.insert(this.getSSC(sscIndex).getClone(false));
         }
         
         return sscLibrary;
@@ -525,18 +537,16 @@ public final class SSCLibrary {
         return false;
     }
 
-    //    /**
+//    /**
 //     * Builds both HOSE code lookup tables of this SSC library containing a list
-//     * of shifts as well as a list of SSC indices for each HOSE code.
-//     * Then it will be exported into a given MongoDB collection.
+//     * of shifts for each HOSE code.
+//     * Then it will be exported as JSON into a file.
 //     *
-//     * @param collection MongoDB collection to store in
-//     * @throws java.lang.InterruptedException
+//     * @param pathToJSONFile path to JSON file to store in
 //     *
-//     * @see #buildHOSELookupTables()
 //     */
-//    public void exportHOSECodeLookupTable(final MongoCollection<withDocument> collection) throws InterruptedException {
-//
+//    public void exportHOSECodeLookupTable(final String pathToJSONFile) {
+
 //        this.buildHOSELookupTables();
 //        // initialize an executor for parallelization
 //        final ExecutorService executor = Utils.initExecuter(this.nThreads);
@@ -588,5 +598,5 @@ public final class SSCLibrary {
 //                });
 //        // shut down the executor service
 //        Utils.stopExecuter(executor, 5);
-//    }
+    }
 }
