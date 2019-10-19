@@ -318,7 +318,7 @@ public final class SSCLibrary {
     }
 
     public SSC getSSC(final long sscIndex){
-        return this.getSSC(sscIndex);
+        return this.map.get(sscIndex);
     }
     
     public boolean containsSSC(final long sscIndex){
@@ -598,5 +598,5 @@ public final class SSCLibrary {
 //                });
 //        // shut down the executor service
 //        Utils.stopExecuter(executor, 5);
-    }
+//    }
 }
