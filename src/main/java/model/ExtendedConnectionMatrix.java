@@ -26,84 +26,81 @@ import org.openscience.cdk.silent.SilentChemObjectBuilder;
  * @author Michael Wenk [https://github.com/michaelwenk]
  */
 public class ExtendedConnectionMatrix {
-    
+
     private final double[][] connectionMatrix;
     private final String[] atomTypes;
-    private final Integer[] hydrogenCounts, valencies, formalCharges;
+    private final Integer[][] atomPropertiesNumeric;// hydrogenCounts, valencies, formalCharges;
     private final Hybridization[] hybridizations;
-    private final Double[] charges;
-    private final boolean[] isInRingAtoms, isAromaticAtoms, isInRingBonds, isAromaticBonds;
-    private final Integer[][] bondIDs;
-    
+    private final Boolean[][] atomPropertiesBoolean;// isInRingAtoms, isAromaticAtoms;
+    private final Boolean[][][] bondProperties;
+
     public ExtendedConnectionMatrix(final IAtomContainer ac){
         this.connectionMatrix = ConnectionMatrix.getMatrix(ac);
-        this.atomTypes = new String[ac.getAtomCount()];
-        this.hydrogenCounts = new Integer[ac.getAtomCount()];
-        this.hybridizations = new Hybridization[ac.getAtomCount()];
-        this.isInRingAtoms = new boolean[ac.getAtomCount()];
-        this.isAromaticAtoms = new boolean[ac.getAtomCount()];
-        this.valencies = new Integer[ac.getAtomCount()];
-        this.charges = new Double[ac.getAtomCount()];
-        this.formalCharges = new Integer[ac.getAtomCount()];
-        this.bondIDs = new Integer[ac.getBondCount()][2];        
-        this.isInRingBonds = new boolean[ac.getBondCount()];
-        this.isAromaticBonds = new boolean[ac.getBondCount()];
-                        
-        this.initAtomsProperties(ac);
-        this.initBondsProperties(ac);
+        this.atomTypes = new String[this.connectionMatrix.length];
+        this.hybridizations = new Hybridization[this.connectionMatrix.length];
+        this.atomPropertiesNumeric = new Integer[this.connectionMatrix.length][];
+        this.atomPropertiesBoolean = new Boolean[this.connectionMatrix.length][];
+        this.bondProperties = new Boolean[this.connectionMatrix.length][][];
+
+        this.init(ac);
     }
     
-    
-    private void initAtomsProperties(final IAtomContainer structure){
-        for (final IAtom atom : structure.atoms()) {
-            this.atomTypes[atom.getIndex()] = atom.getSymbol();
-            this.hydrogenCounts[atom.getIndex()] = atom.getImplicitHydrogenCount();
-            this.hybridizations[atom.getIndex()] = atom.getHybridization();
-            this.isInRingAtoms[atom.getIndex()] = atom.isInRing();
-            this.isAromaticAtoms[atom.getIndex()] = atom.isAromatic();
-            this.valencies[atom.getIndex()] = atom.getValency();
-            this.charges[atom.getIndex()] = atom.getCharge();
-            this.formalCharges[atom.getIndex()] = atom.getFormalCharge();
+    private void init(final IAtomContainer ac){
+
+        IAtom atom1, atom2;
+        IBond bond;
+        for (int i = 0; i < this.connectionMatrix.length; i++) {
+            atom1 = ac.getAtom(i);
+            this.atomTypes[i] = atom1.getSymbol();
+            this.atomPropertiesNumeric[i] = new Integer[3];
+            this.atomPropertiesNumeric[i][0] = atom1.getImplicitHydrogenCount();
+            this.atomPropertiesNumeric[i][1] = atom1.getValency();
+            this.atomPropertiesNumeric[i][2] = atom1.getFormalCharge();
+            this.atomPropertiesBoolean[i] = new Boolean[2];
+            this.atomPropertiesBoolean[i][0] = atom1.isInRing();
+            this.atomPropertiesBoolean[i][1] = atom1.isAromatic();
+            this.hybridizations[i] = atom1.getHybridization();
+
+            this.bondProperties[i] = new Boolean[this.connectionMatrix.length][2];
+            for (int k = 0; k < this.connectionMatrix.length; k++) {
+                atom2 = ac.getAtom(k);
+                bond = ac.getBond(atom1, atom2);
+                if(bond != null){
+                    this.bondProperties[i][k][0] = bond.isInRing();
+                    this.bondProperties[i][k][1] = bond.isAromatic();
+                }
+            }
         }
-    }
-    
-    private void initBondsProperties(final IAtomContainer structure){
-        for (final IBond bond : structure.bonds()) {
-            this.bondIDs[bond.getIndex()][0] = bond.getAtom(0).getIndex();
-            this.bondIDs[bond.getIndex()][1] = bond.getAtom(1).getIndex();
-            this.isInRingBonds[bond.getIndex()] = bond.isInRing();
-            this.isAromaticBonds[bond.getIndex()] = bond.isAromatic();
-        }
+
     }
     
     public IAtomContainer toAtomContainer(){
-        final IAtomContainer substructure = SilentChemObjectBuilder.getInstance().newAtomContainer();
+        final IAtomContainer ac = SilentChemObjectBuilder.getInstance().newAtomContainer();
         IAtom atom;
         for (int i = 0; i < this.connectionMatrix.length; i++) {
             atom = new Atom(this.atomTypes[i]);
-            atom.setImplicitHydrogenCount(this.hydrogenCounts[i]);
+            atom.setImplicitHydrogenCount(this.atomPropertiesNumeric[i][0]);
+            atom.setValency(this.atomPropertiesNumeric[i][1]);
+            atom.setFormalCharge(this.atomPropertiesNumeric[i][2]);
             atom.setHybridization(this.hybridizations[i]);
-            atom.setIsInRing(this.isInRingAtoms[i]);
-            atom.setIsAromatic(this.isAromaticAtoms[i]);
-            atom.setValency(this.valencies[i]);
-            atom.setCharge(this.charges[i]);
-            atom.setFormalCharge(this.formalCharges[i]);
-            
-            substructure.addAtom(atom);
-        }
-        int atomIndex1, atomIndex2;
-        IBond bond;
-        for (int i = 0; i < this.bondIDs.length; i++) {
-            atomIndex1 = this.bondIDs[i][0];
-            atomIndex2 = this.bondIDs[i][1];
-            bond = new Bond(substructure.getAtom(atomIndex1), substructure.getAtom(atomIndex2), Utils.getBondOrder((int) connectionMatrix[atomIndex1][atomIndex2]));
-            bond.setIsInRing(this.isInRingBonds[i]);
-            bond.setIsAromatic(this.isAromaticBonds[i]);
+            atom.setIsInRing(this.atomPropertiesBoolean[i][0]);
+            atom.setIsAromatic(this.atomPropertiesBoolean[i][1]);
 
-            substructure.addBond(bond);
-        }               
+            ac.addAtom(atom);
+        }
+        IBond bond;
+        for (int i = 0; i < this.bondProperties.length; i++) {
+            for (int k = i + 1; k < this.bondProperties.length; k++) {
+                if(this.connectionMatrix[i][k] > 0.0){
+                    bond = new Bond(ac.getAtom(i), ac.getAtom(k), Utils.getBondOrder((int) this.connectionMatrix[i][k]));
+                    bond.setIsInRing(this.bondProperties[i][k][0]);
+                    bond.setIsAromatic(this.bondProperties[i][k][1]);
+                    ac.addBond(bond);
+                }
+            }
+        }
         
-        return substructure;
+        return ac;
     }
     
 }
