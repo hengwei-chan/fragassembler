@@ -89,7 +89,7 @@ public class ProcessQueries {
 
         System.out.println("\n\n-> processing query file: \"" + this.pathToQueriesFile + "\" ...");
 
-        final SSCRanker sscRanker = new SSCRanker(this.sscLibrary, this.nThreads);
+        final SSCRanker sscRanker = new SSCRanker(this.sscLibrary);
 
         int querySpectrumCounter = 0;
         Spectrum querySpectrum = new Spectrum(new String[]{Start.SIGNAL_NUCLEUS});
@@ -144,17 +144,17 @@ public class ProcessQueries {
         System.out.println("ranked match factors:  " + sscRanker.getRankedMatchFactors());
         System.out.println("ranked match tanimoto: " + sscRanker.getRankedTanimotoCoefficients() + "\n");
 
-        final SSCLibrary rankedSSCLibrary = sscRanker.getHits();
+        final ArrayList<SSC> rankedSSCList = sscRanker.getHits();
 
         long nStartSSCs;
-        if ((this.nStarts > 0) && (this.nStarts < rankedSSCLibrary.getSSCCount())) {
+        if ((this.nStarts > 0) && (this.nStarts < rankedSSCList.size())) {
             nStartSSCs = this.nStarts;
         } else {
-            nStartSSCs = rankedSSCLibrary.getSSCCount();
+            nStartSSCs = rankedSSCList.size();
         }
         System.out.println("\nnumber of start SSC for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
-        final ConcurrentHashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCLibrary, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
+        final ConcurrentHashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCList, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
 
         System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + querySpectrum.getSpecDescription() + "):\t" + solutions.size());
 

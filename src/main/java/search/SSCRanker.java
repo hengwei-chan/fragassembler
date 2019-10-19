@@ -16,6 +16,7 @@ import casekit.NMR.Utils;
 import casekit.NMR.match.Matcher;
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
+import model.SSC;
 import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
 import parallel.ParallelTasks;
@@ -38,19 +39,20 @@ public final class SSCRanker {
     private int nThreads;
     private final ConcurrentHashMap<Long, Object[]> hits;
     private final ArrayList<Long> rankedSSCIndices;
-    private final SSCLibrary rankedSSCLibrary;
-    private final MultiplicitySectionsBuilder multiplicitySectionsBuilder;
+    private final ArrayList<SSC> rankedSSCList;
+    private final static MultiplicitySectionsBuilder MULTIPLICITY_SECTIONS_BUILDER = new MultiplicitySectionsBuilder();
     private final static int NO_OF_CALCULATIONS = 3, ASSIGNMENT_IDX = 0, MATCHFACTOR_IDX = 1, TANIMOTO_COEFFICIENT_IDX = 2;
     
     /**
      * Instantiates a new object of this class.
-     * The number of threads to use for parallelization is set to 1 
-     * by default.
+     * The number of threads to use for parallelization is set to the number in {@code sscLibrary} ({@link SSCLibrary#getNThreads()}).
      * 
      *
      * @param sscLibrary HashMap object consisting of SSC and their indices.
      */
-    public SSCRanker(final SSCLibrary sscLibrary) { this(sscLibrary, 1); }
+    public SSCRanker(final SSCLibrary sscLibrary) {
+        this(sscLibrary, sscLibrary.getNThreads());
+    }
     
     /**
      * Instantiates a new object of this class.
@@ -64,9 +66,8 @@ public final class SSCRanker {
         this.setNThreads(nThreads);
         this.hits = new ConcurrentHashMap<>();
         this.rankedSSCIndices = new ArrayList<>();
-        this.rankedSSCLibrary = new SSCLibrary(this.nThreads);
-        this.multiplicitySectionsBuilder = new MultiplicitySectionsBuilder();
-    }     
+        this.rankedSSCList = new ArrayList<>();
+    }
     
     /**
      * Returns the used input SSC library which is used for finding hits
@@ -149,7 +150,7 @@ public final class SSCRanker {
     }
     
     /**
-     * Returns a SSC library containing clones of the current matching SSC
+     * Returns a SSC list containing clones of the current matching SSC
      * for a query spectrum in ranked order.
      * The SSC indices are set in new order starting at 0, 1, 2 etc. .
      * To create/update such ranked SSC library use the findHits function.
@@ -158,12 +159,12 @@ public final class SSCRanker {
      * 
      * @see #findHits(casekit.NMR.model.Spectrum, double)
      */
-    public SSCLibrary getHits() {
-        return this.rankedSSCLibrary;
+    public ArrayList<SSC> getHits() {
+        return this.rankedSSCList;
     }
     
     public long getHitsCount(){
-        return this.getHits().getSSCCount();
+        return this.getHits().size();
     }
                     
     /**
@@ -177,9 +178,9 @@ public final class SSCRanker {
      *
      * @param querySpectrum Query spectrum
      * @param shiftTol Tolerance value [ppm] for shift matching
-     * @throws java.lang.InterruptedException
-     * @throws org.openscience.cdk.exception.CDKException
-     * @throws java.lang.CloneNotSupportedException
+     *
+     * @throws CDKException
+     * @throws InterruptedException
      *
      * @see #getHits()
      * @see #getRankedMatchFactors()
@@ -189,13 +190,13 @@ public final class SSCRanker {
     public void findHits(final Spectrum querySpectrum, final double shiftTol) throws Exception {
         this.calculate(querySpectrum, shiftTol);
         this.rank();
-        this.buildRankedSSCLibrary();
+        this.buildRankedSSCList();
     }
 
     private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException, CDKException {
         this.hits.clear();
 
-        final HashMap<String, ArrayList<Integer>> multiplicitySectionsQuerySpectrum = this.multiplicitySectionsBuilder.buildMultiplicitySections(querySpectrum);
+        final HashMap<String, ArrayList<Integer>> multiplicitySectionsQuerySpectrum = SSCRanker.MULTIPLICITY_SECTIONS_BUILDER.buildMultiplicitySections(querySpectrum);
         final ArrayList<Callable<HashMap<Long, Object[]>>> callables = new ArrayList<>();
         // add all task to do
         for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
@@ -204,6 +205,7 @@ public final class SSCRanker {
                 // pre-search: quick check for too much signals in at least one of the existing multiplicities;
                 // could save time in comparison to Matcher.matchSpectra() (below) which has to search for matches (combinations)
                 // @TODO might be to extend via comparisons in single sections of each multiplicity
+                // @TODO include that pre-search into casekit: Matcher.matchSpectra (?)
                 final HashMap<String, ArrayList<Integer>> multiplicitySectionsSSCSubspectrum = this.sscLibrary.getSSC(sscIndex).getMultiplicitySections();
                 if((multiplicitySectionsSSCSubspectrum.get("Q").size() > multiplicitySectionsQuerySpectrum.get("Q").size())
                         || (multiplicitySectionsSSCSubspectrum.get("T").size() > multiplicitySectionsQuerySpectrum.get("T").size())
@@ -246,7 +248,7 @@ public final class SSCRanker {
      * 3. the match factor regarding the query spectrum (lowest) <br>
      * 4. the total substructure size (highest)
      */
-    private void rank(){
+    private void rank() {
         this.rankedSSCIndices.clear();
         // use indices of SSC of the input SSC library which are valid hits (not null)
         this.rankedSSCIndices.addAll(this.hits.keySet());
@@ -287,10 +289,10 @@ public final class SSCRanker {
         });
     }
 
-    private void buildRankedSSCLibrary() {
-        this.rankedSSCLibrary.removeAll();
+    private void buildRankedSSCList() throws Exception {
+        this.rankedSSCList.clear();
         for (final long rankedSSCIndex : this.rankedSSCIndices) {
-            this.rankedSSCLibrary.insert(this.getSSCLibrary().getSSC(rankedSSCIndex), false);
+            this.rankedSSCList.add(this.getSSCLibrary().getSSC(rankedSSCIndex).getClone(true));
         }
     }
 
