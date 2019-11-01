@@ -19,8 +19,10 @@ import casekit.NMR.model.Spectrum;
 import model.SSC;
 import model.SSCLibrary;
 import org.openscience.cdk.exception.CDKException;
-import parallel.ParallelTasks;
+import org.openscience.cdk.interfaces.IMolecularFormula;
 import start.Start;
+import utils.Compare;
+import utils.ParallelTasks;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -109,7 +111,7 @@ public final class SSCRanker {
      *
      * @return
      *
-     * @see #findHits(casekit.NMR.model.Spectrum, double)
+     * @see #findHits(Spectrum, double, IMolecularFormula)
      */
     public ArrayList<Long> getRankedSSCIndices() {
         return this.rankedSSCIndices;
@@ -121,7 +123,7 @@ public final class SSCRanker {
      *
      * @return
      *
-     * @see #findHits(casekit.NMR.model.Spectrum, double)
+     * @see #findHits(Spectrum, double, IMolecularFormula) 
      */
     public LinkedHashMap<Long, Double> getRankedMatchFactors(){
         final LinkedHashMap<Long, Double> matchFactors = new LinkedHashMap<>();
@@ -138,7 +140,7 @@ public final class SSCRanker {
      *
      * @return
      *
-     * @see #findHits(casekit.NMR.model.Spectrum, double)
+     * @see #findHits(Spectrum, double, IMolecularFormula) 
      */
     public LinkedHashMap<Long, Float> getRankedTanimotoCoefficients() {
         final LinkedHashMap<Long, Float> tanimotoCoefficients = new LinkedHashMap<>();
@@ -157,7 +159,7 @@ public final class SSCRanker {
      *
      * @return
      * 
-     * @see #findHits(casekit.NMR.model.Spectrum, double)
+     * @see #findHits(Spectrum, double, IMolecularFormula) 
      */
     public ArrayList<SSC> getHits() {
         return this.rankedSSCList;
@@ -187,26 +189,32 @@ public final class SSCRanker {
      * @see #getRankedTanimotoCoefficients()
      *
      */
-    public void findHits(final Spectrum querySpectrum, final double shiftTol) throws Exception {
-        this.calculate(querySpectrum, shiftTol);
+    public void findHits(final Spectrum querySpectrum, final double shiftTol, final IMolecularFormula molecularFormula) throws Exception {
+        this.filter(querySpectrum, shiftTol, molecularFormula);
         this.rank();
         this.buildRankedSSCList();
     }
 
-    private void calculate(final Spectrum querySpectrum, final double shiftTol) throws InterruptedException, CDKException {
+    private void filter(final Spectrum querySpectrum, final double shiftTol, final IMolecularFormula molecularFormula) throws InterruptedException, CDKException {
         this.hits.clear();
 
         final HashMap<String, ArrayList<Integer>> multiplicitySectionsQuerySpectrum = SSCRanker.MULTIPLICITY_SECTIONS_BUILDER.buildMultiplicitySections(querySpectrum);
         final ArrayList<Callable<HashMap<Long, Object[]>>> callables = new ArrayList<>();
         // add all task to do
         for (final long sscIndex : this.sscLibrary.getSSCIndices()) {
+            final SSC ssc = this.sscLibrary.getSSC(sscIndex);
             callables.add(() -> {
-
-                // pre-search: quick check for too much signals in at least one of the existing multiplicities;
+                // 1. pre-search if a molecular formula is given
+                if(molecularFormula != null){
+                    if(!Compare.compareWithMolecularFormula(ssc.getSubstructure(), molecularFormula)){
+                        return null;
+                    }
+                }
+                // 2. pre-search: quick check for too much signals in at least one of the existing multiplicities;
                 // could save time in comparison to Matcher.matchSpectra() (below) which has to search for matches (combinations)
                 // @TODO might be to extend via comparisons in single sections of each multiplicity
                 // @TODO include that pre-search into casekit: Matcher.matchSpectra (?)
-                final HashMap<String, ArrayList<Integer>> multiplicitySectionsSSCSubspectrum = this.sscLibrary.getSSC(sscIndex).getMultiplicitySections();
+                final HashMap<String, ArrayList<Integer>> multiplicitySectionsSSCSubspectrum = ssc.getMultiplicitySections();
                 if((multiplicitySectionsSSCSubspectrum.get("Q").size() > multiplicitySectionsQuerySpectrum.get("Q").size())
                         || (multiplicitySectionsSSCSubspectrum.get("T").size() > multiplicitySectionsQuerySpectrum.get("T").size())
                         || (multiplicitySectionsSSCSubspectrum.get("D").size() > multiplicitySectionsQuerySpectrum.get("D").size())
@@ -214,7 +222,7 @@ public final class SSCRanker {
                     return null;
                 }
                 // calculation of matches and check whether each signal in SSC subspectrum has exactly one match in query spectrum
-                final Assignment matchAssignment = Matcher.matchSpectra(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, 0, 0, shiftTol);
+                final Assignment matchAssignment = Matcher.matchSpectra(ssc.getSubspectrum(), querySpectrum, 0, 0, shiftTol);
                 if (!matchAssignment.isFullyAssigned(0)) {
                     return null;
                 }
@@ -227,8 +235,8 @@ public final class SSCRanker {
                 final HashMap<Long, Object[]> tempHashMap = new HashMap<>();
                 final Object[] calculations = new Object[SSCRanker.NO_OF_CALCULATIONS];
                 calculations[SSCRanker.ASSIGNMENT_IDX] = matchAssignment;
-                calculations[SSCRanker.MATCHFACTOR_IDX] = Utils.roundDouble(Matcher.calculateAverageDeviation(this.sscLibrary.getSSC(sscIndex).getSubspectrum(), querySpectrum, 0, 0, shiftTol), Start.DECIMAL_PLACES);
-                calculations[SSCRanker.TANIMOTO_COEFFICIENT_IDX] = Matcher.calculateTanimotoCoefficient(matchedQuerySubspectrum, this.sscLibrary.getSSC(sscIndex).getSubspectrum(), 0, 0);
+                calculations[SSCRanker.MATCHFACTOR_IDX] = Utils.roundDouble(Matcher.calculateAverageDeviation(ssc.getSubspectrum(), querySpectrum, 0, 0, shiftTol), Start.DECIMAL_PLACES);
+                calculations[SSCRanker.TANIMOTO_COEFFICIENT_IDX] = Matcher.calculateTanimotoCoefficient(matchedQuerySubspectrum, ssc.getSubspectrum(), 0, 0);
                 tempHashMap.put(sscIndex, calculations);
 
                 return tempHashMap;
