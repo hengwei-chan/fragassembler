@@ -12,13 +12,13 @@
 package model;
 
 import casekit.NMR.dbservice.NMRShiftDB;
-import casekit.NMR.model.Signal;
 import com.mongodb.client.MongoCollection;
-import conversion.Converter;
 import fragmentation.Fragmentation;
 import org.bson.Document;
 import org.openscience.cdk.exception.CDKException;
-import start.TimeMeasurement;
+import utils.Compare;
+import utils.Converter;
+import utils.TimeMeasurement;
 
 import java.io.FileNotFoundException;
 import java.util.*;
@@ -40,8 +40,9 @@ public final class SSCLibrary {
      * That is important for holding ranked SSCs in order in SSCRanker class.
      */
     private final ConcurrentHashMap<Long, SSC> map;
-    private final ConcurrentHashMap<String, ArrayList<Long>> HOSECodeLookupTable;
+    private final ConcurrentHashMap<String, List<Long>> HOSECodeLookupTable;
     private int nThreads;
+    private long sscCount;
     
     /**
      * Instanciates a new object of this class.
@@ -60,6 +61,7 @@ public final class SSCLibrary {
         this.map = new ConcurrentHashMap<>();
         this.HOSECodeLookupTable = new ConcurrentHashMap<>();
         this.nThreads = nThreads;
+        this.sscCount = 0;
     }
 
 
@@ -72,8 +74,8 @@ public final class SSCLibrary {
      * values
      *
      */
-    public HashMap<String, ArrayList<Long>> getHOSECodeLookupTable() {
-        return new HashMap<>(this.HOSECodeLookupTable);
+    public ConcurrentHashMap<String, List<Long>> getHOSECodeLookupTable() {
+        return new ConcurrentHashMap<>(this.HOSECodeLookupTable);
     }
     
     public int getNThreads(){
@@ -215,18 +217,16 @@ public final class SSCLibrary {
     private boolean extendBySSCs(final Collection<SSC> collection){
         // no further parallelization needed because insert() method will block anyway
         for (final SSC ssc : collection) {
-            if (ssc != null) {
-                if (!this.insert(ssc)) {
-                    System.err.println(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-                    try {
-                        throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
-                    } catch (CDKException ex) {
-                        Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
-                    }
+            if (!this.insert(ssc)) {
+                System.err.println(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
+                try {
+                    throw new CDKException(Thread.currentThread().getStackTrace()[1].getMethodName() + ": insertion SSC with index " + ssc.getIndex() + " failed");
+                } catch (CDKException ex) {
+                    Logger.getLogger(SSCLibrary.class.getName()).log(Level.SEVERE, null, ex);
                 }
             }
         }
-
+        
         return true;
     }
     
@@ -258,63 +258,13 @@ public final class SSCLibrary {
     public boolean containsSSC(final SSC ssc) {
         return this.findSSC(ssc) != null;
     }
-
-    /**
-     * Returns a SSC with same structural properties which already exists.
-     * This is based on HOSE code comparisons and hydrogen counts in last sphere as well as multiplicities. </br>
-     * If the attached hydrogens in last sphere or the multiplicities in both subspectra differ,
-     * then two SSC are not considered to be the same.
-     *
-     * @param ssc
-     * @return index in this SSC library if there is already a SSC entry, otherwise null
-     *
-     */
-    public Long findSSC(final SSC ssc) {
-        if(!this.HOSECodeLookupTable.containsKey(ssc.getAsHOSECode())){
-            return null;
-        }
-        SSC sscInLibrary;
-        Signal signalSSC, signalSSCInLibrary;
-        boolean valid;
-        for (final long sscIndexInLibrary : this.getHOSECodeLookupTable().get(ssc.getAsHOSECode())){
-            sscInLibrary = this.getSSC(sscIndexInLibrary);
-            // as pre-filter
-            if(Arrays.equals(sscInLibrary.getAttachedHydrogensCountsInOuterSphere(), ssc.getAttachedHydrogensCountsInOuterSphere())
-                    && Arrays.equals(sscInLibrary.getMultiplicitiesInOuterSphere(), ssc.getMultiplicitiesInOuterSphere())){
-
-                valid = true;
-                for (int i = 0; i < ssc.getAtomCount(); i++) {
-                    signalSSC = ssc.getSubspectrum().getSignal(ssc.getAssignments().getIndex(0, i));
-                    signalSSCInLibrary = sscInLibrary.getSubspectrum().getSignal(sscInLibrary.getAssignments().getIndex(0, i));
-                    // if both signals exist and the multiplicities are not equal
-                    if((signalSSC != null) && (signalSSCInLibrary != null)
-                            && !signalSSC.getMultiplicity().equals(signalSSCInLibrary.getMultiplicity())){
-                        valid = false;
-                        break;
-                    } else {
-                        // if one signal exists and the other not then something is wrong
-                        if(((signalSSC == null) && (signalSSCInLibrary != null)) || ((signalSSC != null) && (signalSSCInLibrary == null))){
-                            valid = false;
-                            break;
-                        }
-                        // else: atoms which have no signal
-                    }
-                }
-                if(valid){
-                    return sscIndexInLibrary;
-                }
-            }
-        }
-
-        return null;
-    }
     
     public boolean isEmpty(){
         return this.getSSCCount() == 0;
     }
     
     public long getSSCCount(){
-        return this.map.mappingCount();
+        return this.sscCount;//this.map.mappingCount();
     }
 
     public SSC getSSC(final long sscIndex){
@@ -345,52 +295,63 @@ public final class SSCLibrary {
     }
 
     /**
+     * Returns a SSC with same structural properties which already exists.
+     * This is based on HOSE code comparisons and hydrogen counts in last sphere as well as multiplicities. </br>
+     * If the attached hydrogens in last sphere or the multiplicities in both subspectra differ,
+     * then two SSC are not considered to be the same.
+     *
+     * @param ssc
+     * @return index in this SSC library if there is already a SSC entry, otherwise null
+     *
+     */
+    public Long findSSC(final SSC ssc) {
+        final String extendedHOSECode = Compare.getExtendedHOSECode(ssc);
+        if(!this.HOSECodeLookupTable.containsKey(extendedHOSECode)){
+            return null;
+        }
+        for (final long sscIndexInLibrary : this.HOSECodeLookupTable.get(extendedHOSECode)){
+            if(Compare.compareSSC(ssc, this.getSSC(sscIndexInLibrary))){
+                return sscIndexInLibrary;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Inserts a new SSC to this SSC library.
      *
      * @param ssc SSC to add to this library
-//     * @param clone indicates whether SSCs to insert should be cloned beforehand ({@link model.SSC#getClone(boolean)})
-//     * @param reduceShifts used when {code clone == true} ; indicates whether the shift lists of each signal to be
-//     *                     reduced to the representative signal shift ({@link model.SSC#getClone(boolean)})
-//     *
-//     * @return false if the given SSC could not be cloned successfully
      * @return false if given SSC is null
      * 
      * @see #findSSC(SSC)
-     * @see SSC#getClone(boolean)
      */
-    public boolean insert(final SSC ssc){//}, final boolean clone, final boolean reduceShifts) {
+     public boolean insert(final SSC ssc){
         if(ssc == null){
             return false;
         }
         final Long sscIndexInLibrary = this.findSSC(ssc);
         if(sscIndexInLibrary != null){
-            if(!this.getSSC(sscIndexInLibrary).addShiftsFromSubspectrum(ssc.getSubspectrum())){
-                System.err.println(" -> could not add subspectrum to already existing SSC with HOSE code: " + ssc.getAsHOSECode());
+            final SSC sscInLibrary = this.getSSC(sscIndexInLibrary);
+            if(!sscInLibrary.addShiftsFromSubspectrum(ssc.getSubspectrum())){
+                System.err.println(" -> could not add subspectrum to already existing SSC with HOSE code: " + ssc.toHOSECode());
+                System.err.println(" --> " + sscInLibrary.getSubspectrum().getMultiplicities());
+                System.err.println(" --> " + ssc.getSubspectrum().getMultiplicities());
                 return false;
             }
 
             return true;
         }
-        final String HOSECode = ssc.getAsHOSECode();
-        this.HOSECodeLookupTable.put(HOSECode, new ArrayList<>());
-
-//        final SSC sscToInsert;
-//        if(clone){
-//            try {
-//                sscToInsert = ssc.getClone(reduceShifts);
-//            } catch (Exception e) {
-//                return false;
-//            }
-//        } else {
-//            sscToInsert = ssc;
-//        }
-//        sscToInsert.setIndex(this.getSSCCount());
-//        this.HOSECodeLookupTable.get(HOSECode).add(sscToInsert.getIndex());
-//        this.map.put(sscToInsert.getIndex(), sscToInsert);
-
-        ssc.setIndex(this.getSSCCount());
-        this.HOSECodeLookupTable.get(HOSECode).add(ssc.getIndex());
+        final String extendedHOSECode = Compare.getExtendedHOSECode(ssc);
+        this.HOSECodeLookupTable.put(extendedHOSECode, new ArrayList<>());
+        if(this.isEmpty()){
+            ssc.setIndex(0);
+        } else {
+            ssc.setIndex(Collections.max(this.getSSCIndices()) + 1);//this.getSSCCount());
+        }
+        this.HOSECodeLookupTable.get(extendedHOSECode).add(ssc.getIndex());
         this.map.put(ssc.getIndex(), ssc);
+        this.sscCount++;
 
         return true;
     }
@@ -408,13 +369,19 @@ public final class SSCLibrary {
         if(!this.containsSSC(sscIndex)){
             return false;
         }
-        this.HOSECodeLookupTable.get(this.getSSC(sscIndex).getAsHOSECode()).remove(sscIndex);
-        return this.map.remove(sscIndex, this.getSSC(sscIndex));
+        if(!this.map.remove(sscIndex, this.getSSC(sscIndex))){
+            return false;
+        }
+        this.HOSECodeLookupTable.get(this.getSSC(sscIndex).toHOSECode()).remove(sscIndex);
+        this.sscCount--;
+
+        return true;
     }
 
     public void removeAll(){
         this.HOSECodeLookupTable.clear();
         this.map.clear();
+        this.sscCount = 0;
     }
 
     /**
