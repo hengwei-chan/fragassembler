@@ -9,7 +9,7 @@
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package conversion;
+package utils;
 
 import casekit.NMR.model.Assignment;
 import casekit.NMR.model.Spectrum;
@@ -23,7 +23,6 @@ import model.ExtendedConnectionMatrix;
 import model.SSC;
 import model.SSCLibrary;
 import org.bson.Document;
-import parallel.ParallelTasks;
 
 import java.io.*;
 import java.util.*;
@@ -48,7 +47,7 @@ public class Converter {
                 sscDocument.getInteger("maxSphere"),
                 GSON.fromJson(((Document) sscDocument.get("shifts")).toJson(),  new TypeToken<HashMap<Integer, ArrayList<Double>>>(){}.getType()),
                 GSON.fromJson(((Document) sscDocument.get("shiftsRanges")).toJson(),  new TypeToken<HashMap<Integer, Double[]>>(){}.getType()),
-                GSON.fromJson(((Document) sscDocument.get("unsaturatedAtomIndices")).toJson(),  new TypeToken<ArrayList<Integer>>(){}.getType()),
+                sscDocument.get("unsaturatedAtomIndices", ArrayList.class),
                 GSON.fromJson(((Document) sscDocument.get("multiplicitySections")).toJson(), new TypeToken<HashMap<String, ArrayList<Integer>>>(){}.getType())
                 );
         ssc.setIndex(sscDocument.getLong("index"));
