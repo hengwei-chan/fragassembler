@@ -26,7 +26,6 @@ import org.openscience.cdk.exception.CDKException;
 import org.openscience.cdk.interfaces.IAtom;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.interfaces.IBond;
-import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -183,7 +182,7 @@ public final class SSC {
      * @return HOSE code of SSC's root atom
      *
      */
-    public String getAsHOSECode() {
+    public String toHOSECode() {
         return this.getHOSECode(this.getRootAtomIndex());
     }
     
@@ -196,9 +195,10 @@ public final class SSC {
      * @see #updateHOSECodes()
      */
     public void update() throws CDKException {
-        AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(this.substructure);
+//        AtomContainerManipulator.percieveAtomTypesAndConfigureAtoms(this.substructure);
         this.updateUnsaturatedAtomIndices();
         this.updateHOSECodes();
+        this.updateSignalOrder();
         this.updateMultiplicitySections();
         this.updateAttachedHydrogensCountAndMultiplicitiesInOuterSphere();
     }
@@ -206,8 +206,8 @@ public final class SSC {
     private void updateAttachedHydrogensCountAndMultiplicitiesInOuterSphere(){
         final ArrayList<Integer> atomIndicesInOuterSphere = this.getAtomIndicesInHOSECodeSphere(this.getRootAtomIndex(), this.getMaxSphere());
         if((atomIndicesInOuterSphere == null) || atomIndicesInOuterSphere.isEmpty()){
-            this.attachedHydrogensCountsInOuterSphere = new Integer[0];
-            this.multiplicitiesInOuterSphere = new String[0];
+            this.attachedHydrogensCountsInOuterSphere = new Integer[]{};
+            this.multiplicitiesInOuterSphere = new String[]{};
 
             return;
         }
@@ -217,18 +217,15 @@ public final class SSC {
             this.attachedHydrogensCountsInOuterSphere[i] = this.getSubstructure().getAtom(atomIndicesInOuterSphere.get(i)).getImplicitHydrogenCount();
         }
         // update multiplicities
-        final ArrayList<Integer> atomIndicesInOuterSphereWithSignal = new ArrayList<>();
+        final ArrayList<String> multiplicitiesInOuterSphereList = new ArrayList<>();
+        Signal signal;
         for (final int atomIndexInOuterSphere : atomIndicesInOuterSphere){
-            if(this.assignment.getIndex(0, atomIndexInOuterSphere) != null){
-                atomIndicesInOuterSphereWithSignal.add(atomIndexInOuterSphere);
+            signal = this.getSubspectrum().getSignal(this.assignment.getIndex(0, atomIndexInOuterSphere));
+            if(signal != null){
+                multiplicitiesInOuterSphereList.add(signal.getMultiplicity());
             }
         }
-        this.multiplicitiesInOuterSphere = new String[atomIndicesInOuterSphereWithSignal.size()];
-        int counter = 0;
-        for (final int atomIndexInOuterSphere : atomIndicesInOuterSphereWithSignal){
-            this.multiplicitiesInOuterSphere[counter] = this.getSubspectrum().getMultiplicity(this.assignment.getIndex(0, atomIndexInOuterSphere));
-            counter++;
-        }
+        this.multiplicitiesInOuterSphere = multiplicitiesInOuterSphereList.toArray(new String[]{});
     }
 
     public Integer[] getAttachedHydrogensCountsInOuterSphere(){
@@ -283,28 +280,72 @@ public final class SSC {
         } catch (CloneNotSupportedException e) {
             return false;
         }
-
         boolean removeInsertedAtom = false;
-        if(!this.addBond(bond, parentAtomIndexinSubstructure, this.getSubstructure().indexOf(atomClone))){
+        if(!this.addBond(bond, parentAtomIndexinSubstructure, this.getAtomCount() - 1)){
             removeInsertedAtom = true;
         }
-        if(!removeInsertedAtom && (signal != null)){
-            try {
-                if(!this.getSubspectrum().addSignal(signal.getClone())
-                        || !this.getAssignments().addAssignment(new int[]{this.getAtomCount() - 1})){
+        if(!removeInsertedAtom){
+            if(signal != null){
+                try {
+                    if(!this.getSubspectrum().addSignal(signal.getClone())){
+                        removeInsertedAtom = true;
+                    } else if(!this.getAssignments().addAssignment(new int[]{this.getAtomCount() - 1})){
+                        this.getSubspectrum().removeSignal(this.getSubspectrum().getSignalCount() - 1);
+                        removeInsertedAtom = true;
+                    } // else: successfully added signal and assignment
+
+                } catch (Exception e) {
                     removeInsertedAtom = true;
                 }
-            } catch (Exception e) {
-                removeInsertedAtom = true;
+            } else {
+                if(atomClone.getSymbol().equals("C")){
+                    System.err.println(" TRIED TO INSERT 13C ATOM WITHOUT SIGNAL (NULL)");
+                    removeInsertedAtom = true;
+                }
             }
+
         }
         if(removeInsertedAtom){
-            this.getSubstructure().removeAtom(atomClone);
-
+            this.removeLastAtom();
             return false;
         }
 
+        try {
+            this.update();
+        } catch (CDKException e) {
+            e.printStackTrace();
+        }
+
         return true;
+    }
+
+    private void updateSignalOrder(){
+        final Spectrum prevSubspectrum = new Spectrum(this.getSubspectrum().getNuclei());
+        for (final Signal signal : this.getSubspectrum().getSignals()){
+            prevSubspectrum.addSignal(signal);
+        }
+        final ArrayList<Integer> prevAssignments = this.getAssignments().getAssignments(0);
+        // remove all signals to them again in HOSE code order
+        for (final Signal signal : prevSubspectrum.getSignals()){
+            this.getSubspectrum().removeSignal(signal);
+        }
+        final ArrayList<Integer> connectionTreeKeys = this.getConnectionTree(this.getRootAtomIndex()).getKeys();
+        int atomIndex;
+        Signal signal;
+        for (int k = 0; k < connectionTreeKeys.size(); k++) {
+            atomIndex = connectionTreeKeys.get(k);
+            signal = prevSubspectrum.getSignal(prevAssignments.indexOf(atomIndex));
+            if(signal != null){
+                this.getSubspectrum().addSignal(signal);
+                this.getAssignments().setAssignment(0,this.getSubspectrum().getSignalCount() - 1, atomIndex);
+            }
+        }
+
+        this.updateEquivalentSignals();
+    }
+
+    private void updateEquivalentSignals(){
+        this.getSubspectrum().detectEquivalences();
     }
 
     public boolean addBond(final IBond bond, final int atomIndexInSubstructure1, final int atomIndexInSubstructure2){
@@ -326,6 +367,12 @@ public final class SSC {
         }
         this.getSubstructure().addBond(bondToAdd);
 
+        try {
+            this.update();
+        } catch (CDKException e) {
+            e.printStackTrace();
+        }
+
         return true;
     }
 
@@ -335,6 +382,12 @@ public final class SSC {
         }
         this.getSubstructure().removeBond(this.getBond(atomIndexInSubstructure1, atomIndexInSubstructure2));
 
+        try {
+            this.update();
+        } catch (CDKException e) {
+            e.printStackTrace();
+        }
+
         return true;
     }
 
@@ -343,6 +396,12 @@ public final class SSC {
             return false;
         }
         this.getSubstructure().removeBond((this.getBondCount() - 1));
+
+        try {
+            this.update();
+        } catch (CDKException e) {
+            e.printStackTrace();
+        }
 
         return true;
     }
@@ -369,12 +428,17 @@ public final class SSC {
             this.getSubspectrum().removeSignal(signalIndex);
             this.getAssignments().removeAssignment(signalIndex);
         }
+        try {
+            this.update();
+        } catch (CDKException e) {
+            e.printStackTrace();
+        }
 
         return true;
     }
 
     public boolean removeLastAtom(){
-        return this.removeAtom((this.getAtomCount() - 1));
+        return this.removeAtom(this.getAtomCount() - 1);
     }
 
     public IAtom getAtom(final int atomIndexInSubstructure){
@@ -453,24 +517,7 @@ public final class SSC {
         if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
             return false;
         }
-        this.connectionTrees.put(atomIndexInSubstructure, HOSECodeBuilder.buildConnectionTree(this.substructure, atomIndexInSubstructure, null));//this.maxSphere));
-        if(atomIndexInSubstructure == this.getRootAtomIndex()){
-            boolean sphereContainsNonRingClosureNodes;
-            for (int s = 0; s <= this.getConnectionTree(atomIndexInSubstructure).getMaxSphere(); s++) {
-                sphereContainsNonRingClosureNodes = false;
-                for (final ConnectionTreeNode nodeInLastSphere : this.getConnectionTree(atomIndexInSubstructure).getNodesInSphere(s)){
-                    if(!nodeInLastSphere.isRingClosureNode()){
-                        sphereContainsNonRingClosureNodes = true;
-                        break;
-                    }
-                }
-                if (sphereContainsNonRingClosureNodes){
-                    this.maxSphere = s;
-                } else {
-                    break;
-                }
-            }
-        }
+        this.connectionTrees.put(atomIndexInSubstructure, HOSECodeBuilder.buildConnectionTree(this.substructure, atomIndexInSubstructure, null));
         
         return true;
     }    
@@ -523,6 +570,13 @@ public final class SSC {
         this.HOSECodes.put(atomIndexInSubstructure, HOSECodeBuilder.buildHOSECode(this.connectionTrees.get(atomIndexInSubstructure), false));
 
         if(atomIndexInSubstructure == this.getRootAtomIndex()){
+            for (int s = 0; s <= this.getConnectionTree(atomIndexInSubstructure).getMaxSphere(); s++) {
+                if(this.getConnectionTree(atomIndexInSubstructure).getNodesInSphere(s, false).isEmpty()){
+                    break;
+                }
+                this.maxSphere = s;
+            }
+
             this.updateAttachedHydrogensCountAndMultiplicitiesInOuterSphere();
         }
 
@@ -550,13 +604,11 @@ public final class SSC {
         if (!Utils.checkIndexInAtomContainer(this.substructure, atomIndexInSubstructure)) {
             return null;
         }
-        final ArrayList<ConnectionTreeNode> nodesInSphere = this.connectionTrees.get(atomIndexInSubstructure).getNodesInSphere(sphere);
+        final ArrayList<ConnectionTreeNode> nodesInSphere = this.connectionTrees.get(atomIndexInSubstructure).getNodesInSphere(sphere, false);
         final ArrayList<Integer> nodeIndicesInSphere = new ArrayList<>();
         // ignore ring closure node indices
         for (final ConnectionTreeNode nodeInSphere : nodesInSphere){
-            if(!nodeInSphere.isRingClosureNode()){
-                nodeIndicesInSphere.add(nodeInSphere.getKey());
-            }
+            nodeIndicesInSphere.add(nodeInSphere.getKey());
         }
 
         return nodeIndicesInSphere;
