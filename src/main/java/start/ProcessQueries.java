@@ -28,9 +28,12 @@ import model.SSCLibrary;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.openscience.cdk.exception.CDKException;
+import org.openscience.cdk.interfaces.IMolecularFormula;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
 import org.openscience.cdk.smiles.SmilesParser;
+import org.openscience.cdk.tools.manipulator.MolecularFormulaManipulator;
 import search.SSCRanker;
+import utils.TimeMeasurement;
 
 import java.io.*;
 import java.util.*;
@@ -91,6 +94,7 @@ public class ProcessQueries {
 
         final SSCRanker sscRanker = new SSCRanker(this.sscLibrary);
 
+        IMolecularFormula molecularFormula = null;
         int querySpectrumCounter = 0;
         Spectrum querySpectrum = new Spectrum(new String[]{Start.SIGNAL_NUCLEUS});
         final Iterator<String> it = this.br.lines().iterator();
@@ -108,12 +112,21 @@ public class ProcessQueries {
                     if(line.trim().isEmpty()){
                         break;
                     }
-                    signalProperties = line.trim().split(",");
-                    if(!signalProperties[0].trim().equals(Start.SIGNAL_NUCLEUS)){
-                        System.out.println("Query spectrum " + querySpectrumCounter + " contains a signal with different nucleus!!!");
-                        continue;
+                    if (line.trim().startsWith("//")) {
+                        try {
+                            molecularFormula = MolecularFormulaManipulator.getMolecularFormula(line.split("//")[1].trim(), SilentChemObjectBuilder.getInstance());
+                            System.out.println(" read molecular formula: " + MolecularFormulaManipulator.getString(molecularFormula));
+                        } catch (Exception e){
+                            molecularFormula = null;
+                        }
+                    } else {
+                        signalProperties = line.trim().split(",");
+                        if(!signalProperties[0].trim().equals(Start.SIGNAL_NUCLEUS)){
+                            System.out.println("Query spectrum " + querySpectrumCounter + " contains a signal with different nucleus!!!");
+                            continue;
+                        }
+                        querySpectrum.addSignal(new Signal(querySpectrum.getNuclei(), new Double[]{Double.parseDouble(signalProperties[1].trim())}, signalProperties[2].trim(), Double.parseDouble(signalProperties[3].trim())));
                     }
-                    querySpectrum.addSignal(new Signal(querySpectrum.getNuclei(), new Double[]{Double.parseDouble(signalProperties[1].trim())}, signalProperties[2].trim(), Double.parseDouble(signalProperties[3].trim())));
                 }
                 querySpectrum.detectEquivalences();
             }
@@ -129,16 +142,16 @@ public class ProcessQueries {
                 this.presearch(querySpectrum);
             }
             // main processing of the query spectrum against the SSC library
-            this.processCore(sscRanker, querySpectrum, querySpectrumCounter);
+            this.processCore(sscRanker, querySpectrum, molecularFormula, querySpectrumCounter);
 
             querySpectrumCounter++;
         }
         this.br.close();
     }
 
-    public void processCore(final SSCRanker sscRanker, final Spectrum querySpectrum, final long querySpectrumCounter) throws Exception {
+    public void processCore(final SSCRanker sscRanker, final Spectrum querySpectrum, final IMolecularFormula molecularFormula, final long querySpectrumCounter) throws Exception {
 
-        sscRanker.findHits(querySpectrum, this.shiftTol);
+        sscRanker.findHits(querySpectrum, this.shiftTol, molecularFormula);
         System.out.println("\n\nno. of matches:    " + sscRanker.getHitsCount());
         System.out.println("ranked SSC indices:    " + sscRanker.getRankedSSCIndices());
         System.out.println("ranked match factors:  " + sscRanker.getRankedMatchFactors());
@@ -154,7 +167,7 @@ public class ProcessQueries {
         }
         System.out.println("\nnumber of start SSC for query " + querySpectrumCounter + ":\t" + nStartSSCs);
 
-        final ConcurrentHashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCList, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, this.pathToOutputsFolder, querySpectrumCounter);
+        final ConcurrentHashMap<String, SSC> solutions = Assembly.assemble(nStartSSCs, sscRanker.getNThreads(), rankedSSCList, this.minMatchingSphere, querySpectrum, this.matchFactorThrs, this.shiftTol, molecularFormula, this.pathToOutputsFolder, querySpectrumCounter);
 
         System.out.println("\nsolutions for query " + querySpectrumCounter + " (" + querySpectrum.getSpecDescription() + "):\t" + solutions.size());
 
@@ -188,7 +201,7 @@ public class ProcessQueries {
             System.out.println("query spectrum   :\t" + sortedQuerySpectrumShifts);
             System.out.println("solution spectrum:\t" + sortedSolutionSpectrumShifts);
             System.out.println("SMILES:          :\t" + smiles);
-            System.out.println("              --> \t" + "atoms: " + solutions.get(smiles).getSubstructure().getAtomCount() + ", bonds: " + solutions.get(smiles).getSubstructure().getBondCount());
+            System.out.println("              --> \t" + "atoms: " + solutions.get(smiles).getAtomCount() + ", bonds: " + solutions.get(smiles).getBondCount());
             System.out.println("              --> \t" + "tanimoto: " + tanimotoCoefficients.get(smiles));
 
 
